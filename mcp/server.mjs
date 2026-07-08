@@ -1,5 +1,5 @@
 /**
- * - [INPUT]: 依赖 MCP SDK、ext-apps registerAppTool、zod、静态 widget 构建器与 name-engine 标准化能力。
+ * - [INPUT]: 依赖 MCP SDK、ext-apps registerAppTool、zod、静态 widget 构建器、name-engine 标准化与 task-plan 约束路由。
  * - [OUTPUT]: 对外注册 render_naming_product_widget、get_naming_product_state、save_naming_product_request、save_naming_product_result 四个 MCP 工具。
  * - [POS]: mcp 的唯一协议入口，连接 Codex 宿主、GUI widget 与项目本地状态文件。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -14,6 +14,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import { normalizeCandidates } from "../src/lib/name-engine.js";
+import { buildTaskPlan } from "../src/lib/task-plan.js";
 import { NAMING_STATIC_BUILD_DIR, namingStaticHtml } from "./lib/naming-static-widget.mjs";
 import { pluginPath } from "./lib/plugin-root.mjs";
 import { inlineWidget, registerWidgetResource } from "./lib/widget-resource.mjs";
@@ -244,9 +245,11 @@ function registerStateTools(mcpServer) {
           content: [{ type: "text", text: "request.id is required." }],
         };
       }
+      const profile = input.request.profile || {};
       state.requests[id] = {
         id,
-        profile: input.request.profile || {},
+        profile,
+        plan: buildTaskPlan(profile),
         batch: Number.isFinite(input.request.batch) ? input.request.batch : 0,
         source: nonEmpty(input.request.source) || "widget",
         status: "pending",

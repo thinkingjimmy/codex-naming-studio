@@ -10,10 +10,13 @@ description: Compute Chinese baby name candidates for a pending Codex Naming Stu
 When a follow-up message contains `NAMING_PRODUCT_REQUEST_ID: <id>`, the user is waiting in the widget loading state. Work fast and write results back; do not answer in prose only.
 
 1. Call `get_naming_product_state` with the active `projectDir` and locate the pending request by id.
-2. Read `profile`: surname, gender, calendar, birth date/time, name length, preferred/blocked characters, tone sliders, and filters.
-3. Generate 8-12 Chinese given-name candidates yourself, using naming expertise: 姓名学、音律、字形、寓意、五行喜用与避讳. Respect every filter in `profile.filters` (生僻字、多音字、拼音不准、普通话谐音、热门名字). Do not call any external API and never ask for an API key — Codex's own reasoning is the model.
-4. Call `save_naming_product_result` with the same `requestId` and the candidates.
-5. Tell the user briefly that the GUI has been updated.
+2. Read `profile` (surname, gender, calendar, birth date/time, name length, preferred/blocked characters, tone sliders, filters) and `plan` — the ordered steps derived from the user's GUI selections.
+3. Execute the plan:
+   - Steps with a `skill` field must run first. `naming-studio-research` steps gather external facts (popular-name blocklists, homophone audits) via `$codex-naming-studio:naming-studio-research`.
+   - Steps without a `skill` field are hard constraints; every generated candidate must satisfy all of them.
+4. Generate 8-12 Chinese given-name candidates yourself, using naming expertise: 姓名学、音律、字形、寓意、五行喜用与避讳. Do not call any external API and never ask for an API key — Codex's own reasoning is the model; research steps use built-in web search only.
+5. Call `save_naming_product_result` with the same `requestId` and the candidates.
+6. Tell the user briefly that the GUI has been updated.
 
 ## Candidate Shape
 

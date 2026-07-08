@@ -1,9 +1,11 @@
 /**
- * - [INPUT]: 依赖 Codex native widget 注入的 window.namingProductMcp / window.openai，以及 MCP state tools。
+ * - [INPUT]: 依赖 Codex native widget 注入的 window.namingProductMcp / window.openai、MCP state tools 与 task-plan 的约束路由。
  * - [OUTPUT]: 对外提供 hasNamingWidgetBridge、submitCodexNameRequest、loadCodexNameState。
  * - [POS]: lib 的 Codex 宿主协议层，让 GUI 点击生成后把任务交给 Codex 而非浏览器内模型。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
+import { buildTaskPlan } from "./task-plan.js";
+
 const TOOL_GET_STATE = "get_naming_product_state";
 const TOOL_SAVE_REQUEST = "save_naming_product_request";
 const WIDGET_PAYLOAD_TIMEOUT_MS = 5000;
@@ -123,6 +125,19 @@ function followUpSender() {
   return null;
 }
 
+function renderPlanLines(profile) {
+  const steps = buildTaskPlan(profile);
+  if (steps.length === 0) return [];
+  return [
+    "执行计划（由 GUI 勾选约束推导，逐条执行）：",
+    ...steps.map((step, index) => {
+      const skillTag = step.skill ? `触发 $codex-naming-studio:${step.skill}（${step.topic}）：` : "";
+      return `${index + 1}. ${skillTag}${step.instruction}`;
+    }),
+    "",
+  ];
+}
+
 function buildFollowUpPrompt({ requestId, profile, batch }) {
   return [
     `NAMING_PRODUCT_REQUEST_ID: ${requestId}`,
@@ -130,9 +145,10 @@ function buildFollowUpPrompt({ requestId, profile, batch }) {
     "请使用 $codex-naming-studio:naming-studio-generate 处理这个 GUI 生成请求。",
     "用户正在 Codex Naming Studio widget 中等待 loading，请不要只在聊天里回答，也不要调用外部 API 或索要任何 key。",
     "",
+    ...renderPlanLines(profile),
     "操作要求：",
-    "1. 调用 get_naming_product_state 读取这个 requestId 的 profile。",
-    "2. 基于姓名学、音律、字形、寓意、五行偏好与避讳生成 8-12 个中文名字，并遵守 profile.filters 中的普通话谐音、热门名字等筛选项。",
+    "1. 调用 get_naming_product_state 读取这个 requestId 的 profile 与 plan。",
+    "2. 先执行计划中带 skill 的研究步骤，再基于姓名学、音律、字形、寓意、五行偏好与避讳生成 8-12 个中文名字，硬约束逐条满足。",
     "3. 调用 save_naming_product_result，把 candidates 写回 GUI；失败也要用 result.error 回写，让 GUI 退出 loading。",
     "4. 完成后只简短说明 GUI 已更新。",
     "",

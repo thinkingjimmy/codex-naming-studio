@@ -75,7 +75,10 @@ Codex 会通过 `render_naming_product_widget` 打开原生 widget，不需要�
 ## 技能
 
 - `codex-naming-studio:naming-studio-open`：打开起名工作台原生 widget。
-- `codex-naming-studio:naming-studio-generate`：处理 GUI 生成请求，测算候选名并回写结果。
+- `codex-naming-studio:naming-studio-generate`：编排 GUI 生成请求——按约束计划先跑研究步骤，再测算候选名并回写结果。
+- `codex-naming-studio:naming-studio-research`：外部事实研究——搜索热门名字避让清单、审查普通话谐音。
+
+GUI 的每个勾选与输入由 `src/lib/task-plan.js` 的规则表翻译为执行计划：带 skill 的步骤（如勾选"避开热门名字"触发 `naming-studio-research` 搜索）先执行，其余作为生成硬约束。计划同时写进 follow-up prompt 与 `.naming-product/state.json`，Codex 与状态文件看到同一份真相。
 
 ## 本地开发 fallback
 
@@ -121,7 +124,7 @@ assets/ - 插件展示资产预留位 (0子目录)
 mcp/ - Codex native widget 与请求状态 MCP 边界 (1子目录: lib)
 scripts/ - 开发、构建与 MCP 探针脚本 (0子目录)
 server/ - 普通浏览器开发 fallback 后端 (0子目录)
-skills/ - Codex 操作协议 (2子目录: naming-studio-open, naming-studio-generate)
+skills/ - Codex 操作协议 (3子目录: naming-studio-open, naming-studio-generate, naming-studio-research)
 src/ - 前端产品机器相 (2子目录: components, lib)
 </directory>
 
@@ -148,6 +151,7 @@ design-qa.md - 源截图与实现截图的设计 QA 门禁记录
 开发规范: 新增或改变业务文件时先更新 L3 头部，再检查最近 README.md。
 
 变更日志:
+- 2026-07-08: 新增 task-plan 约束路由层——GUI 勾选经规则表翻译为执行计划（研究 skill 触发 + 生成硬约束），持久化进请求状态并渲染进 follow-up prompt，新增 naming-studio-research skill 与探针断言。
 - 2026-07-08: 对齐 Cowart 插件形态——README 改为 Codex 安装优先并声明零 key 用法，skill 拆分为 open/generate 两个并补齐 agents/openai.yaml，follow-up prompt 指向具体 skill。
 - 2026-07-08: 删除宝宝信息中的出生地输入，新增普通话谐音与热门名字筛选约束。
 - 2026-07-08: 修复姓氏拼音 IME 输入截断，统一前端图标为 Phosphor Icons，并遮罩原生日期时间图标重叠。

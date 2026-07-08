@@ -1,0 +1,4 @@
+interface:
+  display_name: "Naming Studio Research"
+  short_description: "Research popular names and homophone risks for a naming request"
+  default_prompt: "Use $codex-naming-studio:naming-studio-research to research popular baby names to avoid before generating candidates."

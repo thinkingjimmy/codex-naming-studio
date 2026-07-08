@@ -62,12 +62,18 @@ try {
           gender: "boy",
           birthDate: "2024-05-20",
           birthTime: "10:18",
+          preferredChars: "家",
+          filters: { popularName: true },
         },
       },
     },
   });
   if (saveRequest.isError) {
     throw new Error(saveRequest.content?.find((item) => item.type === "text")?.text || "save_naming_product_request failed.");
+  }
+  const planIds = (saveRequest.structuredContent?.request?.plan || []).map((step) => step.id);
+  if (!planIds.includes("research-popular-names") || !planIds.includes("include-preferred-chars")) {
+    throw new Error(`Constraint routing did not derive expected plan steps. Got: ${planIds.join(", ")}`);
   }
   const saveResult = await client.callTool({
     name: "save_naming_product_result",

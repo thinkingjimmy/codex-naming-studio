@@ -6,6 +6,7 @@
 api-client.js: HTTP fallback 客户端，普通浏览器开发时 POST 宝宝信息并接收结构化候选名结果。
 codex-widget-client.js: Codex widget 客户端，保存 GUI 请求、发送 follow-up message、轮询 MCP 状态。
 name-engine.js: 起名候选标准化与兜底引擎，输出评分、五行、诗意摘要、命理解释与指标。
+task-plan.js: 约束路由层，声明式规则表把 GUI 勾选翻译为 skill 触发步骤与生成硬约束，被 widget 客户端与 MCP server 共享。
 utils.js: cn 工具，合并 clsx 与 tailwind-merge 以消除 className 冲突。
 
 法则: 成员完整·一行一文件·父级链接·技术词前置
