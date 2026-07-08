@@ -1,6 +1,6 @@
 /**
  * - [INPUT]: 依赖 tailwind.config.js 的 content 扫描与 shadcn 语义 token。
- * - [OUTPUT]: 提供全局 Tailwind 层、CSS 变量、滑块与焦点样式。
+ * - [OUTPUT]: 提供全局 Tailwind 层、CSS 变量、滑块、焦点样式与原生日期时间选择器图标遮罩。
  * - [POS]: src 的视觉地基，被所有组件消费，避免局部重复定义颜色与交互。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -56,6 +56,15 @@ textarea {
 
 input[type="range"] {
   accent-color: hsl(var(--primary));
+}
+
+.native-picker-input {
+  padding-right: 2.5rem;
+}
+
+.native-picker-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0;
 }
 
 ::selection {

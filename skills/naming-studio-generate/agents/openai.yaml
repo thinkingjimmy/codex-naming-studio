@@ -1,0 +1,4 @@
+interface:
+  display_name: "Naming Studio Generate"
+  short_description: "Generate names for a pending Naming Studio GUI request"
+  default_prompt: "Use $codex-naming-studio:naming-studio-generate to handle the pending Naming Studio request and write results back to the GUI."

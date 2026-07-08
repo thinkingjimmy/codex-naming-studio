@@ -1,17 +1,17 @@
 /**
- * - [INPUT]: 依赖 lucide-react 导航图标。
+ * - [INPUT]: 依赖 @phosphor-icons/react 导航图标。
  * - [OUTPUT]: 对外提供 HeaderNav 顶部品牌与工具导航组件。
  * - [POS]: components/workbench 的页面头部，独立于生成状态机。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
-import { HelpCircle, History, Settings, Star, Sunrise } from "lucide-react";
+import { ClockCounterClockwise, GearSix, Question, Star, SunHorizon } from "@phosphor-icons/react";
 
 export function HeaderNav() {
   const links = [
-    [HelpCircle, "使用指南"],
+    [Question, "使用指南"],
     [Star, "我的收藏"],
-    [History, "历史记录"],
-    [Settings, "设置"],
+    [ClockCounterClockwise, "历史记录"],
+    [GearSix, "设置"],
   ];
 
   return (
@@ -19,7 +19,7 @@ export function HeaderNav() {
       <div className="mx-auto flex max-w-[1560px] items-center justify-between gap-4 px-5 py-3">
         <div className="flex items-center gap-3">
           <div className="grid h-14 w-14 place-items-center rounded-lg bg-amber-100 text-amber-600">
-            <Sunrise className="h-9 w-9" strokeWidth={1.8} />
+            <SunHorizon weight="duotone" className="h-9 w-9" />
           </div>
           <div className="flex items-end gap-4">
             <h1 className="font-serif text-4xl font-semibold leading-none tracking-normal text-stone-800">codex 起名</h1>

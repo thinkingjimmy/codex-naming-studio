@@ -1,11 +1,11 @@
 /**
- * - [INPUT]: 依赖 react 状态钩子、Codex widget 客户端、本地 HTTP fallback、默认宝宝信息与工作台面板组件。
+ * - [INPUT]: 依赖 react 状态钩子、@phosphor-icons/react 状态图标、Codex widget 客户端、本地 HTTP fallback、默认宝宝信息与工作台面板组件。
  * - [OUTPUT]: 对外提供 NameWorkbench 三栏起名产品组件。
  * - [POS]: components 的产品状态机，协调左栏输入、中栏候选、右栏解析，不承载具体面板渲染细节。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import * as React from "react";
-import { Leaf } from "lucide-react";
+import { Leaf } from "@phosphor-icons/react";
 import { requestNameCandidates } from "@/lib/api-client.js";
 import { hasNamingWidgetBridge, loadCodexNameState, submitCodexNameRequest } from "@/lib/codex-widget-client.js";
 import { DEFAULT_PROFILE } from "@/lib/name-engine.js";

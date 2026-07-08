@@ -1,11 +1,11 @@
 /**
- * - [INPUT]: 依赖候选名详情数据、METRIC_LABELS 指标、Tabs/Card/Button 与 workbench/common 展示工具。
+ * - [INPUT]: 依赖 @phosphor-icons/react 解析/对比图标、候选名详情数据、METRIC_LABELS 指标、Tabs/Card/Button 与 workbench/common 展示工具。
  * - [OUTPUT]: 对外提供 DetailPanel 名字解析与对比面板。
  * - [POS]: components/workbench 的右栏解释面板，负责空白/loading、详情 tabs 与对比卡片。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import * as React from "react";
-import { FileText, Plus, RefreshCw, Star, X } from "lucide-react";
+import { ArrowClockwise, FileText, Plus, Star, X } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button.jsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.jsx";
 import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.jsx";
@@ -117,7 +117,7 @@ function ComparePanel({ names, comparedIds, selectedId, toggleCompare }) {
       <CardHeader className="pb-3">
         <CardTitle className="text-base">对比名字（最多 3 个）</CardTitle>
         <Button type="button" size="sm" variant="ghost" onClick={() => compared.forEach((name) => toggleCompare(name.id))}>
-          <RefreshCw className="h-4 w-4" />
+          <ArrowClockwise className="h-4 w-4" />
           清空
         </Button>
       </CardHeader>
@@ -157,7 +157,7 @@ function DetailEmptyState({ isGenerating }) {
         <CardContent className="grid min-h-[360px] place-items-center p-8 text-center">
           <div className="max-w-[300px] space-y-4">
             <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-emerald-100 text-primary">
-              <FileText className={cn("h-7 w-7", isGenerating && "animate-pulse")} />
+              <FileText weight="duotone" className={cn("h-7 w-7", isGenerating && "animate-pulse")} />
             </div>
             <div>
               <p className="font-serif text-2xl font-semibold text-stone-800">{isGenerating ? "解析正在生成" : "解析区等待结果"}</p>
@@ -187,7 +187,7 @@ export function DetailPanel({ name, names, favorite, comparedIds, toggleFavorite
             <span className="font-serif text-2xl text-amber-600">{name.score}分</span>
           </div>
           <Button type="button" variant="outline" size="sm" onClick={() => toggleFavorite(name.id)}>
-            <Star className={cn("h-4 w-4", favorite && "fill-amber-400 text-amber-500")} />
+            <Star weight={favorite ? "fill" : "regular"} className={cn("h-4 w-4", favorite && "text-amber-500")} />
             {favorite ? "已收藏" : "收藏"}
           </Button>
         </CardHeader>

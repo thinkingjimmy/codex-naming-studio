@@ -3,7 +3,7 @@
 
 **Open Questions**
 - Source visual shows 24 names while the bridge returns 12 candidates by default. This is intentional for the LLM protocol: the backend schema asks for 8-12 candidates per batch, and pagination still supports additional batches.
-- The logo mark uses a lucide-based sun icon rather than the exact raster logo from the screenshot. It preserves the product signal without copying a private asset.
+- The logo mark uses a Phosphor sun icon rather than the exact raster logo from the screenshot. It preserves the product signal without copying a private asset.
 
 **Implementation Checklist**
 - Source visual truth: user-supplied Codex attachment.
@@ -18,7 +18,7 @@
 - Protocol verification: plugin validator passed, skill validator passed, Vite build passed, workspace MCP probe passed, installed personal plugin MCP probe passed.
 
 **Follow-up Polish**
-- P3: replace the lucide logo with a generated or supplied bitmap logo if exact brand fidelity becomes important.
+- P3: replace the Phosphor logo with a generated or supplied bitmap logo if exact brand fidelity becomes important.
 - P3: move repeated select/slider microcopy into data tables if the form grows another section.
 
 final result: passed

@@ -1,36 +1,68 @@
 /**
- * - [INPUT]: 依赖 ui 表单组件、lucide-react 图标、name-engine 的 DEFAULT_PROFILE 与 workbench/common 的共享控件。
+ * - [INPUT]: 依赖 react 组合输入状态、ui 表单组件、@phosphor-icons/react 图标、name-engine 的 DEFAULT_PROFILE 与 workbench/common 的共享控件。
  * - [OUTPUT]: 对外提供 ProfilePanel 宝宝信息输入栏。
  * - [POS]: components/workbench 的输入面板，只负责采集约束并触发清空/生成命令。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
-import { Baby, Calendar, Clock, Eraser, RefreshCw, SlidersHorizontal, Sparkles } from "lucide-react";
+import * as React from "react";
+import { ArrowClockwise, Baby, CalendarBlank, Clock, Eraser, SlidersHorizontal, Sparkle } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button.jsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.jsx";
 import { Input } from "@/components/ui/input.jsx";
 import { Label } from "@/components/ui/label.jsx";
-import { Select } from "@/components/ui/select.jsx";
 import { DEFAULT_PROFILE } from "@/lib/name-engine.js";
 import { cn } from "@/lib/utils.js";
 import { Field, FilterCheck, Segment, SliderRow, genderOptions } from "./common.jsx";
+
+const dateTimeInputClass = "native-picker-input";
 
 export function ProfilePanel({ profile, setProfile, onClear, onGenerate, isGenerating }) {
   const setValue = (key, value) => setProfile((current) => ({ ...current, [key]: value }));
   const setTone = (key, value) => setProfile((current) => ({ ...current, tones: { ...current.tones, [key]: value } }));
   const setFilter = (key, value) => setProfile((current) => ({ ...current, filters: { ...current.filters, [key]: value } }));
   const resetTones = () => setProfile((current) => ({ ...current, tones: { ...DEFAULT_PROFILE.tones } }));
+  const [surnameDraft, setSurnameDraft] = React.useState(profile.surname || "");
+  const isComposingSurname = React.useRef(false);
+
+  const normalizeSurname = (value) => Array.from(value.trim()).slice(0, 2).join("");
+  const commitSurname = (value) => {
+    const normalized = normalizeSurname(value);
+    setSurnameDraft(normalized);
+    setValue("surname", normalized);
+  };
+
+  React.useEffect(() => {
+    if (!isComposingSurname.current) setSurnameDraft(profile.surname || "");
+  }, [profile.surname]);
 
   return (
     <Card className="overflow-hidden">
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-lg">
-          <Baby className="h-5 w-5 text-amber-500" />
+          <Baby weight="duotone" className="h-5 w-5 text-amber-500" />
           宝宝信息
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <Field label="姓氏">
-          <Input value={profile.surname} onChange={(event) => setValue("surname", event.target.value.slice(0, 2))} />
+          <Input
+            value={surnameDraft}
+            onBlur={(event) => {
+              if (!isComposingSurname.current) commitSurname(event.currentTarget.value);
+            }}
+            onChange={(event) => {
+              const nextValue = event.target.value;
+              setSurnameDraft(nextValue);
+              if (!isComposingSurname.current) commitSurname(nextValue);
+            }}
+            onCompositionStart={() => {
+              isComposingSurname.current = true;
+            }}
+            onCompositionEnd={(event) => {
+              isComposingSurname.current = false;
+              commitSurname(event.currentTarget.value);
+            }}
+          />
         </Field>
         <Field label="性别倾向">
           <Segment value={profile.gender} options={genderOptions} onChange={(value) => setValue("gender", value)} />
@@ -46,34 +78,15 @@ export function ProfilePanel({ profile, setProfile, onClear, onGenerate, isGener
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="relative">
-              <Input type="date" value={profile.birthDate} onChange={(event) => setValue("birthDate", event.target.value)} />
-              <Calendar className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input className={dateTimeInputClass} type="date" value={profile.birthDate} onChange={(event) => setValue("birthDate", event.target.value)} />
+              <CalendarBlank className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             </div>
             <div className="relative">
-              <Input type="time" value={profile.birthTime} onChange={(event) => setValue("birthTime", event.target.value)} />
-              <Clock className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input className={dateTimeInputClass} type="time" value={profile.birthTime} onChange={(event) => setValue("birthTime", event.target.value)} />
+              <Clock className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             </div>
           </div>
           <p className="mt-1.5 text-xs text-muted-foreground">甲辰年 四月十三 巳时</p>
-        </Field>
-        <Field label="出生地">
-          <div className="grid grid-cols-3 gap-3">
-            <Select value={profile.province} onChange={(event) => setValue("province", event.target.value)}>
-              <option>浙江省</option>
-              <option>江苏省</option>
-              <option>广东省</option>
-            </Select>
-            <Select value={profile.city} onChange={(event) => setValue("city", event.target.value)}>
-              <option>杭州市</option>
-              <option>苏州市</option>
-              <option>广州市</option>
-            </Select>
-            <Select value={profile.district} onChange={(event) => setValue("district", event.target.value)}>
-              <option>西湖区</option>
-              <option>上城区</option>
-              <option>滨江区</option>
-            </Select>
-          </div>
         </Field>
         <Field label="名字字数">
           <div className="grid grid-cols-2 rounded-md border border-border bg-white/70 p-1">
@@ -102,7 +115,7 @@ export function ProfilePanel({ profile, setProfile, onClear, onGenerate, isGener
           <div className="flex items-center justify-between">
             <Label>风格偏好</Label>
             <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground" type="button" onClick={resetTones}>
-              <RefreshCw className="h-3.5 w-3.5" />
+              <ArrowClockwise className="h-3.5 w-3.5" />
               重置
             </button>
           </div>
@@ -121,6 +134,8 @@ export function ProfilePanel({ profile, setProfile, onClear, onGenerate, isGener
             <FilterCheck checked={profile.filters.rare} label="避开生僻字" onChange={(value) => setFilter("rare", value)} />
             <FilterCheck checked={profile.filters.polyphone} label="避开多音字" onChange={(value) => setFilter("polyphone", value)} />
             <FilterCheck checked={profile.filters.unclear} label="避开拼音不准" onChange={(value) => setFilter("unclear", value)} />
+            <FilterCheck checked={profile.filters.mandarinHomophone} label="避开普通话谐音" onChange={(value) => setFilter("mandarinHomophone", value)} />
+            <FilterCheck checked={profile.filters.popularName} label="避开热门名字" onChange={(value) => setFilter("popularName", value)} />
             <FilterCheck checked={profile.filters.strokes} label="笔画不宜过多" onChange={(value) => setFilter("strokes", value)} />
             <FilterCheck checked={profile.filters.highScore} label="仅看高分名字" onChange={(value) => setFilter("highScore", value)} />
           </div>
@@ -131,7 +146,7 @@ export function ProfilePanel({ profile, setProfile, onClear, onGenerate, isGener
             清空
           </Button>
           <Button type="button" onClick={onGenerate} disabled={isGenerating}>
-            <Sparkles className={cn("h-4 w-4", isGenerating && "animate-spin")} />
+            <Sparkle weight="duotone" className={cn("h-4 w-4", isGenerating && "animate-spin")} />
             {isGenerating ? "生成中" : "生成好名"}
           </Button>
         </div>

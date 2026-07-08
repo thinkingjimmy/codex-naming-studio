@@ -1,0 +1,3 @@
+[mcp_servers.codex_naming_studio_mcp]
+command = "node"
+args = ["./scripts/start-mcp.mjs"]

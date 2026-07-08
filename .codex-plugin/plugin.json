@@ -23,9 +23,9 @@
     "websiteURL": "https://openai.com",
     "brandColor": "#5D7D46",
     "defaultPrompt": [
-      "Open Codex Naming Studio.",
-      "Use Codex Naming Studio to generate baby names.",
-      "Handle the pending Codex Naming Studio request."
+      "打开起名工作台",
+      "Open the Codex Naming Studio workbench for this project.",
+      "Handle the pending Naming Studio request and write results back to the GUI."
     ]
   }
 }
