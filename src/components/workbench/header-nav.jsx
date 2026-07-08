@@ -22,10 +22,10 @@ export function HeaderNav() {
             <Sunrise className="h-9 w-9" strokeWidth={1.8} />
           </div>
           <div className="flex items-end gap-4">
-            <h1 className="font-serif text-4xl font-semibold leading-none tracking-normal text-stone-800">沐阳起名</h1>
+            <h1 className="font-serif text-4xl font-semibold leading-none tracking-normal text-stone-800">codex 起名</h1>
             <div className="hidden border-l border-border pl-4 text-sm leading-6 text-muted-foreground sm:block">
-              <p className="font-medium text-stone-700">新生儿智能起名</p>
-              <p>沐光而生，向阳而名</p>
+              <p className="font-medium text-stone-700">Codex 原生起名</p>
+              <p>填写信息，等待 Codex 回写结果</p>
             </div>
           </div>
         </div>
