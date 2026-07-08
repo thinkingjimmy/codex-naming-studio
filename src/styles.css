@@ -1,0 +1,71 @@
+/**
+ * - [INPUT]: 依赖 tailwind.config.js 的 content 扫描与 shadcn 语义 token。
+ * - [OUTPUT]: 提供全局 Tailwind 层、CSS 变量、滑块与焦点样式。
+ * - [POS]: src 的视觉地基，被所有组件消费，避免局部重复定义颜色与交互。
+ * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 43 38% 97%;
+  --foreground: 28 23% 17%;
+  --card: 42 36% 98%;
+  --card-foreground: 28 23% 17%;
+  --primary: 154 32% 43%;
+  --primary-foreground: 40 48% 97%;
+  --secondary: 42 40% 93%;
+  --secondary-foreground: 30 20% 26%;
+  --muted: 40 28% 91%;
+  --muted-foreground: 31 12% 46%;
+  --accent: 39 60% 54%;
+  --accent-foreground: 31 28% 17%;
+  --border: 36 24% 84%;
+  --input: 36 24% 84%;
+  --ring: 154 32% 43%;
+  --radius: 0.5rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: hsl(var(--background));
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  color: hsl(var(--foreground));
+  background:
+    radial-gradient(circle at 16% 2%, rgba(220, 174, 82, 0.12), transparent 26rem),
+    linear-gradient(180deg, #fbfaf6 0%, #f7f4ed 100%);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+input[type="range"] {
+  accent-color: hsl(var(--primary));
+}
+
+::selection {
+  color: hsl(var(--primary-foreground));
+  background: hsl(var(--primary));
+}
+
+.paper-grid {
+  background-image:
+    linear-gradient(rgba(122, 99, 55, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(122, 99, 55, 0.03) 1px, transparent 1px);
+  background-size: 28px 28px;
+}

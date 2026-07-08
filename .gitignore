@@ -1,0 +1,9 @@
+node_modules/
+.npm-cache/
+dist/
+.DS_Store
+.env
+.env.local
+.naming-product/
+design-qa-artifacts/
+*.log

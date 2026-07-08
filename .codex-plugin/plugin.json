@@ -1,0 +1,31 @@
+{
+  "name": "codex-naming-studio",
+  "version": "0.2.0",
+  "description": "A native Codex naming workbench widget for collecting baby naming constraints, asking Codex to run the naming analysis, and rendering structured results back into the GUI.",
+  "author": {
+    "name": "thinkingjimmy",
+    "email": "noreply@example.com",
+    "url": "https://github.com/thinkingjimmy"
+  },
+  "homepage": "https://github.com/thinkingjimmy/codex-naming-studio",
+  "repository": "https://github.com/thinkingjimmy/codex-naming-studio",
+  "license": "MIT",
+  "keywords": ["naming", "codex-widget", "baby-names", "llm"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Codex Naming Studio",
+    "shortDescription": "Collect naming constraints and let Codex return structured name analysis.",
+    "longDescription": "Codex Naming Studio opens a native Codex widget where users fill baby naming constraints, submit them to Codex, wait in the GUI, and receive ranked Chinese name candidates with scoring, five-elements analysis, source notes, and comparison cards.",
+    "developerName": "thinkingjimmy",
+    "category": "Productivity",
+    "capabilities": ["Native Codex widget", "LLM-backed naming analysis", "Structured GUI results"],
+    "websiteURL": "https://openai.com",
+    "brandColor": "#5D7D46",
+    "defaultPrompt": [
+      "Open Codex Naming Studio.",
+      "Use Codex Naming Studio to generate baby names.",
+      "Handle the pending Codex Naming Studio request."
+    ]
+  }
+}
