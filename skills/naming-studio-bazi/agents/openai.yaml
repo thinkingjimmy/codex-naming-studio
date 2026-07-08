@@ -1,0 +1,4 @@
+interface:
+  display_name: "Naming Studio Bazi"
+  short_description: "Run the eight-characters five-elements analysis for naming"
+  default_prompt: "Use $codex-naming-studio:naming-studio-bazi to derive the bazi chart and favorable elements before generating name candidates."

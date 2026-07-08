@@ -1,7 +1,7 @@
 {
   "name": "codex-naming-studio",
-  "version": "0.2.0",
-  "description": "A native Codex naming workbench widget for collecting baby naming constraints, asking Codex to run the naming analysis, and rendering structured results back into the GUI.",
+  "version": "0.3.0",
+  "description": "A Codex naming workbench that opens in the built-in browser, hands GUI requests to Codex through a project state file, and renders structured name analysis back without any API key.",
   "author": {
     "name": "thinkingjimmy",
     "email": "noreply@example.com",
@@ -10,16 +10,16 @@
   "homepage": "https://github.com/thinkingjimmy/codex-naming-studio",
   "repository": "https://github.com/thinkingjimmy/codex-naming-studio",
   "license": "MIT",
-  "keywords": ["naming", "codex-widget", "baby-names", "llm"],
+  "keywords": ["naming", "codex-plugin", "baby-names", "workbench"],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Codex Naming Studio",
     "shortDescription": "Collect naming constraints and let Codex return structured name analysis.",
-    "longDescription": "Codex Naming Studio opens a native Codex widget where users fill baby naming constraints, submit them to Codex, wait in the GUI, and receive ranked Chinese name candidates with scoring, five-elements analysis, source notes, and comparison cards.",
+    "longDescription": "Codex Naming Studio opens a local naming workbench in the Codex built-in browser. Users fill baby naming constraints and click generate; Codex picks up the request from the project state file, runs bazi and research steps per the derived plan, and writes ranked Chinese name candidates with scoring, five-elements analysis, source notes, and comparison cards back to the GUI. No API key required.",
     "developerName": "thinkingjimmy",
     "category": "Productivity",
-    "capabilities": ["Native Codex widget", "LLM-backed naming analysis", "Structured GUI results"],
+    "capabilities": ["Built-in browser workbench", "Codex-driven naming analysis", "Structured GUI results", "Zero API key"],
     "websiteURL": "https://openai.com",
     "brandColor": "#5D7D46",
     "defaultPrompt": [

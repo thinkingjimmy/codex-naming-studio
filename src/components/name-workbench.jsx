@@ -1,13 +1,12 @@
 /**
- * - [INPUT]: 依赖 react 状态钩子、@phosphor-icons/react 状态图标、Codex widget 客户端、本地 HTTP fallback、默认宝宝信息与工作台面板组件。
+ * - [INPUT]: 依赖 react 状态钩子、@phosphor-icons/react 状态图标、api-client 状态协议、默认宝宝信息与工作台面板组件。
  * - [OUTPUT]: 对外提供 NameWorkbench 三栏起名产品组件。
  * - [POS]: components 的产品状态机，协调左栏输入、中栏候选、右栏解析，不承载具体面板渲染细节。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import * as React from "react";
 import { Leaf } from "@phosphor-icons/react";
-import { requestNameCandidates } from "@/lib/api-client.js";
-import { hasNamingWidgetBridge, loadCodexNameState, submitCodexNameRequest } from "@/lib/codex-widget-client.js";
+import { loadNameState, submitNameRequest } from "@/lib/api-client.js";
 import { DEFAULT_PROFILE } from "@/lib/name-engine.js";
 import { CandidatePanel } from "./workbench/candidate-panel.jsx";
 import { DetailPanel } from "./workbench/detail-panel.jsx";
@@ -40,36 +39,17 @@ export function NameWorkbench() {
     setStatus(nextStatus);
   }, []);
 
-  const loadLocalNames = React.useCallback(
-    async (nextProfile, nextBatch) => {
-      setIsGenerating(true);
-      setError("");
-      try {
-        const result = await requestNameCandidates(nextProfile, nextBatch);
-        applyNames(result.candidates, {
-          provider: result.provider,
-          model: result.model,
-          notice: result.notice,
-        });
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "起名服务暂时不可用");
-      } finally {
-        setIsGenerating(false);
-      }
-    },
-    [applyNames],
-  );
-
   React.useEffect(() => {
     if (!pendingRequestId) return undefined;
-    const controller = new AbortController();
+    let cancelled = false;
     let inFlight = false;
 
     async function pollResult() {
       if (inFlight) return;
       inFlight = true;
       try {
-        const state = await loadCodexNameState({ signal: controller.signal });
+        const state = await loadNameState();
+        if (cancelled) return;
         const request = state.requests?.[pendingRequestId];
         if (!request) return;
         if (request.status === "completed" && request.result?.candidates?.length) {
@@ -88,14 +68,14 @@ export function NameWorkbench() {
           setPendingRequestId("");
           setIsGenerating(false);
           setStatus({
-            provider: "codex-widget",
+            provider: "pending-codex",
             model: "Codex",
-            notice: "Codex 返回了错误，GUI 已退出 loading。",
+            notice: "Codex 返回了错误，工作台已退出 loading。",
           });
         }
       } catch (caught) {
-        if (!controller.signal.aborted) {
-          setError(caught instanceof Error ? caught.message : "无法读取 Codex 结果状态。");
+        if (!cancelled) {
+          setError(caught instanceof Error ? caught.message : "无法读取工作台状态。");
         }
       } finally {
         inFlight = false;
@@ -105,7 +85,7 @@ export function NameWorkbench() {
     void pollResult();
     const timer = window.setInterval(pollResult, 1600);
     return () => {
-      controller.abort();
+      cancelled = true;
       window.clearInterval(timer);
     };
   }, [applyNames, pendingRequestId]);
@@ -144,16 +124,8 @@ export function NameWorkbench() {
     setComparedIds([]);
     setIsGenerating(true);
 
-    if (hasNamingWidgetBridge()) {
-      await submitToCodex(nextProfile, nextBatch);
-      return;
-    }
-    await loadLocalNames(nextProfile, nextBatch);
-  };
-
-  const submitToCodex = async (nextProfile, nextBatch) => {
     try {
-      const pending = await submitCodexNameRequest(nextProfile, nextBatch);
+      const pending = await submitNameRequest(nextProfile, nextBatch);
       setPendingRequestId(pending.requestId);
       setStatus({
         provider: pending.provider,
@@ -161,13 +133,9 @@ export function NameWorkbench() {
         notice: pending.notice,
       });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法把请求提交给 Codex。");
+      setError(caught instanceof Error ? caught.message : "无法提交起名请求。");
       setIsGenerating(false);
-      setStatus({
-        provider: "codex-widget",
-        model: "Codex",
-        notice: "Codex 消息桥暂时不可用，未提交成功。",
-      });
+      setStatus(idleStatus);
     }
   };
 

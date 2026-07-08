@@ -17,7 +17,7 @@ function Distribution({ name }) {
   return (
     <div className="grid gap-4 rounded-md border border-border bg-white/58 p-3 md:grid-cols-[1fr_1fr]">
       <div>
-        <p className="mb-3 text-sm font-medium">五行分布（喜用：木、火）</p>
+        <p className="mb-3 text-sm font-medium">五行分布（喜用：{name.complement}）</p>
         <div className="flex items-end gap-6">
           {name.distribution.map(([element, count]) => (
             <div key={element} className="space-y-2 text-center">
@@ -60,6 +60,7 @@ function MetricBars({ name }) {
       {METRIC_LABELS.map(([label, key], index) => {
         const max = [25, 20, 15, 20, 10, 10][index];
         const value = name.metrics[index];
+        if (value == null) return null;
         return (
           <div key={key} className="grid grid-cols-[74px_1fr_48px] items-center gap-3 text-sm">
             <span>{label}</span>
@@ -177,6 +178,10 @@ export function DetailPanel({ name, names, favorite, comparedIds, toggleFavorite
 
   if (!name) return <DetailEmptyState isGenerating={isGenerating} />;
 
+  // 八字 tab 随数据可用性出现：未测五行的候选没有命盘可展示。
+  const availableTabs = name.branches ? tabItems : tabItems.filter(([id]) => id !== "bazi");
+  const activeTab = availableTabs.some(([id]) => id === tab) ? tab : availableTabs[0][0];
+
   return (
     <div className="space-y-4">
       <Card className="overflow-hidden">
@@ -192,15 +197,15 @@ export function DetailPanel({ name, names, favorite, comparedIds, toggleFavorite
           </Button>
         </CardHeader>
         <TabsList>
-          {tabItems.map(([id, label]) => (
-            <TabsTrigger key={id} active={tab === id} onClick={() => setTab(id)}>
+          {availableTabs.map(([id, label]) => (
+            <TabsTrigger key={id} active={activeTab === id} onClick={() => setTab(id)}>
               {label}
             </TabsTrigger>
           ))}
         </TabsList>
         <CardContent className="pt-4">
           <TabsContent active>
-            <DetailContent tab={tab} name={name} />
+            <DetailContent tab={activeTab} name={name} />
           </TabsContent>
         </CardContent>
       </Card>

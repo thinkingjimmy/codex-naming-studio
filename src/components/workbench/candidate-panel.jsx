@@ -51,8 +51,14 @@ function NameRow({ name, selected, favorite, compared, onSelect, onFavorite, onC
         <em className="block text-sm not-italic text-stone-700">{name.grade}</em>
       </span>
       <span className="space-y-1">
-        <span className="flex gap-1.5">{name.elements.map((item) => <ElementPill key={item} value={item} />)}</span>
-        <span className="block text-xs text-muted-foreground">补{name.complement}</span>
+        {name.elements.length > 0 ? (
+          <>
+            <span className="flex gap-1.5">{name.elements.map((item) => <ElementPill key={item} value={item} />)}</span>
+            <span className="block text-xs text-muted-foreground">补{name.complement}</span>
+          </>
+        ) : (
+          <span className="block text-xs text-muted-foreground">未测五行</span>
+        )}
       </span>
       <span className="text-sm leading-7 text-stone-700">{name.summary}</span>
       <Badge className={name.risk === "风险中" ? "bg-amber-100 text-amber-700" : ""}>{name.risk}</Badge>
@@ -102,7 +108,7 @@ export function CandidatePanel({ names, selectedId, favorites, comparedIds, setS
           <CardTitle>为您推荐的名字</CardTitle>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <span>{names.length > 0 ? `共 ${names.length} 个好名` : "尚未生成"}</span>
-            <Badge variant={status.provider === "openai-responses" || status.provider === "codex" ? "default" : "gold"}>{providerLabel(status.provider)}</Badge>
+            <Badge variant={status.provider === "codex" ? "default" : "gold"}>{providerLabel(status.provider)}</Badge>
             <span>{status.model}</span>
           </p>
           {error ? <p className="mt-2 text-xs text-red-700">{error}</p> : null}

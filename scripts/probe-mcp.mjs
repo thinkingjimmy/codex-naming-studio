@@ -1,7 +1,7 @@
 /**
  * - [INPUT]: 依赖 MCP client、临时目录与 Naming Product stdio MCP server。
- * - [OUTPUT]: 对外提供 MCP 工具、状态闭环与 native widget HTML 的快速探针。
- * - [POS]: scripts 的质量门禁，验证插件不是“能构建但不能被 Codex 打开”的假成功。
+ * - [OUTPUT]: 对外提供 MCP 状态工具与约束路由的快速探针。
+ * - [POS]: scripts 的质量门禁，验证 Codex 侧读请求、写结果的闭环不是假成功。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import { mkdtemp } from "node:fs/promises";
@@ -27,7 +27,6 @@ try {
   const tools = await client.listTools();
   const toolNames = tools.tools.map((tool) => tool.name);
   const requiredTools = [
-    "render_naming_product_widget",
     "get_naming_product_state",
     "save_naming_product_request",
     "save_naming_product_result",
@@ -37,17 +36,6 @@ try {
   }
 
   const projectDir = await mkdtemp(path.join(tmpdir(), "naming-product-probe-"));
-  const render = await client.callTool({
-    name: "render_naming_product_widget",
-    arguments: { projectDir, title: "Probe Naming Product" },
-  });
-  if (render._meta?.["openai/outputTemplate"] !== "ui://widget/naming-product/workbench.html") {
-    throw new Error("Render tool did not include expected outputTemplate.");
-  }
-  if (render.structuredContent?.projectDir !== projectDir) {
-    throw new Error("Render tool did not preserve projectDir.");
-  }
-
   const requestId = "probe-request";
   const saveRequest = await client.callTool({
     name: "save_naming_product_request",
@@ -72,8 +60,13 @@ try {
     throw new Error(saveRequest.content?.find((item) => item.type === "text")?.text || "save_naming_product_request failed.");
   }
   const planIds = (saveRequest.structuredContent?.request?.plan || []).map((step) => step.id);
-  if (!planIds.includes("research-popular-names") || !planIds.includes("include-preferred-chars")) {
-    throw new Error(`Constraint routing did not derive expected plan steps. Got: ${planIds.join(", ")}`);
+  for (const expected of ["bazi-analysis", "research-popular-names", "include-preferred-chars"]) {
+    if (!planIds.includes(expected)) {
+      throw new Error(`Constraint routing did not derive plan step ${expected}. Got: ${planIds.join(", ")}`);
+    }
+  }
+  if (planIds.includes("skip-bazi")) {
+    throw new Error("skip-bazi step must not appear when useBazi is enabled.");
   }
   const saveResult = await client.callTool({
     name: "save_naming_product_result",
@@ -106,22 +99,13 @@ try {
     arguments: { projectDir },
   });
   if (state.structuredContent?.latestResult?.candidates?.[0]?.fullName !== "林景和") {
-    throw new Error("Saved result was not normalized and exposed to widget state.");
+    throw new Error("Saved result was not normalized and exposed to workbench state.");
+  }
+  if (state.structuredContent?.requests?.[requestId]?.status !== "completed") {
+    throw new Error("Request did not reach completed status after result save.");
   }
 
-  const resource = await client.readResource({ uri: "ui://widget/naming-product/workbench.html" });
-  const html = resource.contents?.[0]?.text || "";
-  if (!html.includes("window.namingProductMcp") || !html.includes("Naming Product")) {
-    throw new Error("Widget HTML does not include the Naming Product bridge and shell.");
-  }
-  const shell = html
-    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
-    .replace(/<style\b[\s\S]*?<\/style>/gi, "");
-  if (/<script\b[^>]+\bsrc=/i.test(shell) || /<link\b[^>]+\bhref=(?!["']data:)/i.test(shell) || /<iframe\b/i.test(shell)) {
-    throw new Error("Widget HTML keeps external shell resources.");
-  }
-
-  console.log("OK: Naming Product MCP tools and native widget resource are available.");
+  console.log("OK: Naming Product MCP state tools and constraint routing are working.");
 } finally {
   await client.close();
 }

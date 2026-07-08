@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "codex_naming_studio_mcp": {
-      "title": "Codex Naming Studio Widget MCP",
-      "description": "Render the native Codex Naming Studio widget and persist request/result state for Codex-driven name generation.",
+      "title": "Codex Naming Studio State MCP",
+      "description": "Persist naming workbench request/result state so Codex can read GUI requests and write structured results back.",
       "command": "node",
       "args": ["./scripts/start-mcp.mjs"],
       "cwd": "."

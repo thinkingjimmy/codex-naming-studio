@@ -7,6 +7,7 @@
 export const DEFAULT_PROFILE = {
   surname: "林",
   gender: "boy",
+  useBazi: true,
   calendar: "solar",
   birthDate: "2024-05-20",
   birthTime: "10:18",
@@ -207,6 +208,7 @@ function applyProfileScore(template, profile, index) {
 
 export function buildCandidates(profile = DEFAULT_PROFILE, batch = 0) {
   const fullProfile = normalizeProfile(profile);
+  const useBazi = fullProfile.useBazi !== false;
   const surname = (fullProfile.surname || DEFAULT_PROFILE.surname).trim() || DEFAULT_PROFILE.surname;
   return rotate(CANDIDATE_TEMPLATES, batch % CANDIDATE_TEMPLATES.length).map((template, index) => {
     const score = applyProfileScore(template, fullProfile, index);
@@ -217,23 +219,30 @@ export function buildCandidates(profile = DEFAULT_PROFILE, batch = 0) {
       surname,
       rank: index + 1,
       score,
-      distribution: DISTRIBUTION,
-      branches: BRANCHES,
-      complement: template.elements.join("、"),
-      analysis:
-        "日主为己土，生于巳月，火土较旺，木有根，水稍弱。喜用神为木、火，名字中木、火属性有利于平衡命局。",
+      elements: useBazi ? template.elements : [],
+      metrics: useBazi ? template.metrics : [null, ...template.metrics.slice(1)],
+      distribution: useBazi ? DISTRIBUTION : null,
+      branches: useBazi ? BRANCHES : null,
+      complement: useBazi ? template.elements.join("、") : "",
+      analysis: useBazi
+        ? "日主为己土，生于巳月，火土较旺，木有根，水稍弱。喜用神为木、火，名字中木、火属性有利于平衡命局。"
+        : "未启用出生时间测算，本次不做八字五行分析，评分由音律、字形与寓意维度构成。",
     };
   });
 }
 
 export function normalizeCandidates(candidates, profile = DEFAULT_PROFILE, batch = 0) {
   const fullProfile = normalizeProfile(profile);
+  const useBazi = fullProfile.useBazi !== false;
   const fallback = buildCandidates(fullProfile, batch);
   const surname = (fullProfile.surname || DEFAULT_PROFILE.surname).trim() || DEFAULT_PROFILE.surname;
   return candidates.map((candidate, index) => {
     const base = fallback[index % fallback.length];
     const given = String(candidate.given || base.given).slice(0, 4);
-    const elements = Array.isArray(candidate.elements) && candidate.elements.length >= 2 ? candidate.elements.slice(0, 2) : base.elements;
+    const elements = useBazi
+      ? (Array.isArray(candidate.elements) && candidate.elements.length >= 2 ? candidate.elements.slice(0, 2) : base.elements)
+      : [];
+    const metrics = Array.isArray(candidate.metrics) && candidate.metrics.length === 6 ? candidate.metrics : base.metrics;
     const score = Number.isFinite(candidate.score) ? Math.min(99, Math.max(80, Math.round(candidate.score))) : base.score;
     return {
       ...base,
@@ -245,9 +254,13 @@ export function normalizeCandidates(candidates, profile = DEFAULT_PROFILE, batch
       rank: index + 1,
       score,
       elements,
-      metrics: Array.isArray(candidate.metrics) && candidate.metrics.length === 6 ? candidate.metrics : base.metrics,
-      distribution: Array.isArray(candidate.distribution) && candidate.distribution.length === 5 ? candidate.distribution : base.distribution,
-      branches: Array.isArray(candidate.branches) && candidate.branches.length === 4 ? candidate.branches : base.branches,
+      metrics: useBazi ? metrics : [null, ...metrics.slice(1)],
+      distribution: useBazi
+        ? (Array.isArray(candidate.distribution) && candidate.distribution.length === 5 ? candidate.distribution : base.distribution)
+        : null,
+      branches: useBazi
+        ? (Array.isArray(candidate.branches) && candidate.branches.length === 4 ? candidate.branches : base.branches)
+        : null,
       complement: elements.join("、"),
     };
   });

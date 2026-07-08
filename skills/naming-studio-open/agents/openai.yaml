@@ -1,4 +1,4 @@
 interface:
   display_name: "Naming Studio Open"
-  short_description: "Open the Codex Naming Studio workbench widget"
-  default_prompt: "Use $codex-naming-studio:naming-studio-open to open the naming workbench widget for this project."
+  short_description: "Start the naming workbench and open it in the built-in browser"
+  default_prompt: "Use $codex-naming-studio:naming-studio-open to start the naming workbench, open it in the built-in browser, and wait for generate requests."

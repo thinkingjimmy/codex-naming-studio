@@ -92,9 +92,6 @@ export function FilterCheck({ checked, label, onChange }) {
 export function providerLabel(provider) {
   if (provider === "idle") return "等待输入";
   if (provider === "codex") return "Codex 已返回";
-  if (provider === "codex-widget") return "等待 Codex";
-  if (provider === "openai-responses") return "LLM 已连接";
-  if (provider === "fallback-after-error") return "LLM 回退";
-  if (provider === "fallback") return "本地兜底";
+  if (provider === "pending-codex") return "等待 Codex";
   return "等待连接";
 }

@@ -1,19 +1,19 @@
 ---
 name: naming-studio-generate
-description: Compute Chinese baby name candidates for a pending Codex Naming Studio GUI request and write structured results back to the widget. Use when a follow-up message contains NAMING_PRODUCT_REQUEST_ID, or the user asks to handle, retry, or finish a pending naming request.
+description: Compute Chinese baby name candidates for a pending Codex Naming Studio request and write structured results back to the workbench. Use when the request watcher reports a pending naming request, or the user asks to handle, retry, or finish a pending naming request.
 ---
 
 # Naming Studio Generate
 
 ## Workflow
 
-When a follow-up message contains `NAMING_PRODUCT_REQUEST_ID: <id>`, the user is waiting in the widget loading state. Work fast and write results back; do not answer in prose only.
+A pending request means the user is waiting in the workbench loading state. Work fast and write results back; do not answer in prose only.
 
-1. Call `get_naming_product_state` with the active `projectDir` and locate the pending request by id.
+1. Take the request from the watcher output (`scripts/watch-naming-request.mjs`), or call `get_naming_product_state` with the active `projectDir` and locate the pending request by id.
 2. Read `profile` (surname, gender, calendar, birth date/time, name length, preferred/blocked characters, tone sliders, filters) and `plan` — the ordered steps derived from the user's GUI selections.
 3. Execute the plan:
-   - Steps with a `skill` field must run first. `naming-studio-research` steps gather external facts (popular-name blocklists, homophone audits) via `$codex-naming-studio:naming-studio-research`.
-   - Steps without a `skill` field are hard constraints; every generated candidate must satisfy all of them.
+   - Steps with a `skill` field must run first. `naming-studio-bazi` derives the four-pillar chart and favorable elements from the birth time; `naming-studio-research` gathers external facts (popular-name blocklists, homophone audits).
+   - Steps without a `skill` field are hard constraints; every generated candidate must satisfy all of them. When the plan contains the skip-bazi step, do not run any five-elements reasoning: leave `elements` as an empty array, `distribution`/`branches` as null, and the first metric as null.
 4. Generate 8-12 Chinese given-name candidates yourself, using naming expertise: 姓名学、音律、字形、寓意、五行喜用与避讳. Do not call any external API and never ask for an API key — Codex's own reasoning is the model; research steps use built-in web search only.
 5. Call `save_naming_product_result` with the same `requestId` and the candidates.
 6. Tell the user briefly that the GUI has been updated.
@@ -38,7 +38,7 @@ When a follow-up message contains `NAMING_PRODUCT_REQUEST_ID: <id>`, the user is
 
 ## Failure Path
 
-If generation fails for any reason, still call `save_naming_product_result` with `result.error` set to a short Chinese explanation so the widget can leave loading state. Never leave the GUI spinning.
+If generation fails for any reason, still call `save_naming_product_result` with `result.error` set to a short Chinese explanation so the workbench can leave loading state. Never leave the GUI spinning.
 
 ## Taste Rules
 

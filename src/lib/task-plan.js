@@ -1,11 +1,12 @@
 /**
- * - [INPUT]: 依赖 profile 数据形状（filters、preferredChars、blockedChars、calendar）。
+ * - [INPUT]: 依赖 profile 数据形状（useBazi、calendar、birthDate/birthTime、filters、preferredChars、blockedChars）。
  * - [OUTPUT]: 对外提供 buildTaskPlan(profile)，把 GUI 约束翻译为 Codex 执行步骤（skill 触发或生成硬约束）。
- * - [POS]: lib 的约束路由层，是 GUI 勾选与 Codex skill 调度之间的单一真相源，被 codex-widget-client 与 mcp/server 共享。
+ * - [POS]: lib 的约束路由层，是 GUI 勾选与 Codex skill 调度之间的单一真相源，被 naming-state 状态库消费。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
 const RESEARCH_SKILL = "naming-studio-research";
+const BAZI_SKILL = "naming-studio-bazi";
 
 function nonEmpty(value) {
   return typeof value === "string" && value.trim().length > 0;
@@ -17,6 +18,22 @@ function nonEmpty(value) {
 // 新增 GUI 约束时只加规则行，不加分支。
 // ============================================================
 const PLAN_RULES = [
+  {
+    id: "bazi-analysis",
+    when: (profile) => profile.useBazi !== false,
+    step: (profile) => ({
+      skill: BAZI_SKILL,
+      topic: "bazi-analysis",
+      instruction: `按${profile.calendar === "lunar" ? "农历（先换算公历）" : "公历"}出生时间 ${profile.birthDate || ""} ${profile.birthTime || ""} 排四柱、统计五行、判断日主强弱并推导喜用神；候选名用字必须补益喜用神，并回填 elements、distribution、branches 与 analysis。`,
+    }),
+  },
+  {
+    id: "skip-bazi",
+    when: (profile) => profile.useBazi === false,
+    step: () => ({
+      instruction: "用户未启用出生时间测算：跳过八字五行，candidates 的 elements 置空数组、distribution 与 branches 置 null、metrics 首项置 null，评分权重转移到音律、字形与寓意维度。",
+    }),
+  },
   {
     id: "research-popular-names",
     when: (profile) => Boolean(profile.filters?.popularName),
@@ -33,13 +50,6 @@ const PLAN_RULES = [
       skill: RESEARCH_SKILL,
       topic: "mandarin-homophone",
       instruction: "对每个候选名做普通话谐音审查，必要时搜索验证，确认无负面谐音与绰号联想后才可入选。",
-    }),
-  },
-  {
-    id: "convert-lunar-calendar",
-    when: (profile) => profile.calendar === "lunar",
-    step: () => ({
-      instruction: "出生时间为农历，测算八字前先换算为公历再排盘。",
     }),
   },
   {

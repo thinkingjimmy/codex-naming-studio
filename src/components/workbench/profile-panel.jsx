@@ -67,26 +67,32 @@ export function ProfilePanel({ profile, setProfile, onClear, onGenerate, isGener
         <Field label="性别倾向">
           <Segment value={profile.gender} options={genderOptions} onChange={(value) => setValue("gender", value)} />
         </Field>
-        <Field label="出生时间">
-          <div className="mb-2 grid grid-cols-2 gap-3">
-            <Button type="button" variant={profile.calendar === "solar" ? "default" : "outline"} onClick={() => setValue("calendar", "solar")}>
-              公历
-            </Button>
-            <Button type="button" variant={profile.calendar === "lunar" ? "default" : "outline"} onClick={() => setValue("calendar", "lunar")}>
-              农历
-            </Button>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="relative">
-              <Input className={dateTimeInputClass} type="date" value={profile.birthDate} onChange={(event) => setValue("birthDate", event.target.value)} />
-              <CalendarBlank className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Field label="出生时间" hint="用于八字五行测算">
+          <FilterCheck checked={profile.useBazi} label="按出生时间测算八字五行" onChange={(value) => setValue("useBazi", value)} />
+          {profile.useBazi ? (
+            <div className="mt-2 space-y-2">
+              <div className="grid grid-cols-2 gap-3">
+                <Button type="button" variant={profile.calendar === "solar" ? "default" : "outline"} onClick={() => setValue("calendar", "solar")}>
+                  公历
+                </Button>
+                <Button type="button" variant={profile.calendar === "lunar" ? "default" : "outline"} onClick={() => setValue("calendar", "lunar")}>
+                  农历
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="relative">
+                  <Input className={dateTimeInputClass} type="date" value={profile.birthDate} onChange={(event) => setValue("birthDate", event.target.value)} />
+                  <CalendarBlank className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                </div>
+                <div className="relative">
+                  <Input className={dateTimeInputClass} type="time" value={profile.birthTime} onChange={(event) => setValue("birthTime", event.target.value)} />
+                  <Clock className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                </div>
+              </div>
             </div>
-            <div className="relative">
-              <Input className={dateTimeInputClass} type="time" value={profile.birthTime} onChange={(event) => setValue("birthTime", event.target.value)} />
-              <Clock className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            </div>
-          </div>
-          <p className="mt-1.5 text-xs text-muted-foreground">甲辰年 四月十三 巳时</p>
+          ) : (
+            <p className="mt-1.5 text-xs text-muted-foreground">未勾选时不排八字，评分由音律、字形与寓意维度构成。</p>
+          )}
         </Field>
         <Field label="名字字数">
           <div className="grid grid-cols-2 rounded-md border border-border bg-white/70 p-1">

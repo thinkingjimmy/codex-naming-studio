@@ -3,12 +3,10 @@
 > L2 | 父级: ../README.md
 
 成员清单
-dev-full.mjs: 开发进程编排器，探测默认或 NAME_BRIDGE_PORT 指定端口的 bridge 健康状态，复用健康服务或启动 server/llm-bridge.js，再启动 Vite。
+start-workbench.mjs: 工作台启动器——以插件根启 Vite（默认 127.0.0.1:43318），NAMING_PROJECT_DIR 指定状态归属的用户项目，是 Codex "打开起名工作台" 的唯一入口。
+watch-naming-request.mjs: Codex 侧请求监听器——阻塞等待 pending 请求，命中打印请求 JSON（含 plan）exit 0，超时 exit 2。
 start-mcp.mjs: Codex MCP stdio 入口，启动 mcp/server.mjs。
-vite-build-once.mjs: 一次性 Vite 构建适配器，供 native widget 静态内联器调用。
-probe-mcp.mjs: MCP 探针，验证 widget 工具、状态闭环与单 HTML 资源。
-
-架构决策: dev-full.mjs 只接受可证明的 bridge 状态。端口空闲则创建，`/api/health` 健康则复用，端口被坏服务占用则中止；前端通过 `VITE_NAME_BRIDGE_URL` 消费同一个 bridge 地址。
+probe-mcp.mjs: MCP 探针，验证状态工具闭环与约束路由推导。
 
 法则: 成员完整·一行一文件·父级链接·技术词前置
 
