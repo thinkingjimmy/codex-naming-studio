@@ -254,10 +254,17 @@ export function normalizeCandidates(candidates, profile = DEFAULT_PROFILE, batch
   });
 }
 
+// 风险是序数不是字符串，localeCompare 会把"风险低"排在"风险极低"前面。
+const RISK_ORDER = { 风险极低: 0, 风险低: 1, 风险中: 2, 风险高: 3 };
+
+function riskRank(risk) {
+  return RISK_ORDER[risk] ?? Object.keys(RISK_ORDER).length;
+}
+
 export function sortCandidates(candidates, mode) {
   const sorted = [...candidates];
   if (mode === "score") return sorted.sort((a, b) => b.score - a.score);
-  if (mode === "risk") return sorted.sort((a, b) => a.risk.localeCompare(b.risk, "zh-Hans-CN"));
+  if (mode === "risk") return sorted.sort((a, b) => riskRank(a.risk) - riskRank(b.risk));
   if (mode === "style") return sorted.sort((a, b) => b.metrics[5] - a.metrics[5]);
   return sorted;
 }

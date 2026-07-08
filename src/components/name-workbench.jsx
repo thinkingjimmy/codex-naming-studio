@@ -63,8 +63,11 @@ export function NameWorkbench() {
   React.useEffect(() => {
     if (!pendingRequestId) return undefined;
     const controller = new AbortController();
+    let inFlight = false;
 
     async function pollResult() {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const state = await loadCodexNameState({ signal: controller.signal });
         const request = state.requests?.[pendingRequestId];
@@ -75,7 +78,7 @@ export function NameWorkbench() {
             model: request.result.model || "Codex",
             notice: request.result.notice || "Codex 已完成命名测算，结果已回写到 GUI。",
           });
-          setProfile(request.result.profile || profile);
+          setProfile((current) => request.result.profile || current);
           setPendingRequestId("");
           setIsGenerating(false);
           setError("");
@@ -94,6 +97,8 @@ export function NameWorkbench() {
         if (!controller.signal.aborted) {
           setError(caught instanceof Error ? caught.message : "无法读取 Codex 结果状态。");
         }
+      } finally {
+        inFlight = false;
       }
     }
 
@@ -103,7 +108,7 @@ export function NameWorkbench() {
       controller.abort();
       window.clearInterval(timer);
     };
-  }, [applyNames, pendingRequestId, profile]);
+  }, [applyNames, pendingRequestId]);
 
   const selectedName = names.find((name) => name.id === selectedId) || names[0] || null;
   const toggleFavorite = (id) =>

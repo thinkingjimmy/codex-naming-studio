@@ -15,9 +15,10 @@ export async function requestNameCandidates(profile, batch) {
     body: JSON.stringify({ profile, batch }),
   });
 
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(payload.error || "起名服务暂时不可用");
+  // 网关或代理可能返回非 JSON 错误页，解析失败也要落到业务错误而非 SyntaxError。
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload) {
+    throw new Error(payload?.error || "起名服务暂时不可用");
   }
   return payload;
 }

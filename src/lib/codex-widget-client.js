@@ -8,8 +8,6 @@ const TOOL_GET_STATE = "get_naming_product_state";
 const TOOL_SAVE_REQUEST = "save_naming_product_request";
 const WIDGET_PAYLOAD_TIMEOUT_MS = 5000;
 
-globalThis.__NAMING_WIDGET_FETCH_GUARD__ = true;
-
 export function hasNamingWidgetBridge() {
   return Boolean(window.namingProductMcp && typeof window.namingProductMcp.callServerTool === "function");
 }
@@ -109,7 +107,8 @@ async function waitForWidgetPayload(signal) {
       reject(abortError());
     };
 
-    window.addEventListener("openai:set_globals", handleGlobals, { once: true });
+    // 宿主可能多次广播 set_globals，首次未必携带存储目标，必须持续监听直到就绪。
+    window.addEventListener("openai:set_globals", handleGlobals);
     signal?.addEventListener("abort", handleAbort, { once: true });
   });
 }

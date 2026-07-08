@@ -97,11 +97,15 @@ const RESPONSE_SCHEMA = {
   },
 };
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "content-type",
+  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+};
+
 function sendJson(response, status, value) {
   response.writeHead(status, {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "content-type",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    ...CORS_HEADERS,
     "Content-Type": "application/json; charset=utf-8",
   });
   response.end(JSON.stringify(value));
@@ -200,7 +204,10 @@ async function generateNames(profile, batch) {
 }
 
 const server = http.createServer(async (request, response) => {
-  if (request.method === "OPTIONS") return sendJson(response, 204, {});
+  if (request.method === "OPTIONS") {
+    response.writeHead(204, CORS_HEADERS);
+    return response.end();
+  }
   if (request.method === "GET" && request.url === "/api/health") {
     return sendJson(response, 200, {
       ok: true,

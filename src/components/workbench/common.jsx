@@ -1,6 +1,6 @@
 /**
  * - [INPUT]: 依赖 Label 与 cn，承载工作台跨面板共享的选项、样式与小型控件。
- * - [OUTPUT]: 对外提供 genderOptions、tabItems、ElementPill、Field、Segment、SliderRow、FilterCheck、providerLabel、updateNested。
+ * - [OUTPUT]: 对外提供 genderOptions、tabItems、elementStyles、ElementPill、Field、Segment、SliderRow、FilterCheck、providerLabel。
  * - [POS]: components/workbench 的共享底座，被 profile/candidate/detail 面板消费。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -29,10 +29,6 @@ export const elementStyles = {
   金: "bg-stone-100 text-stone-600",
   水: "bg-sky-100 text-sky-700",
 };
-
-export function updateNested(object, key, value) {
-  return { ...object, [key]: value };
-}
 
 export function Field({ label, hint, children }) {
   return (

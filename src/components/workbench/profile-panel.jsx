@@ -1,5 +1,5 @@
 /**
- * - [INPUT]: 依赖 ui 表单组件、lucide-react 图标与 workbench/common 的共享控件。
+ * - [INPUT]: 依赖 ui 表单组件、lucide-react 图标、name-engine 的 DEFAULT_PROFILE 与 workbench/common 的共享控件。
  * - [OUTPUT]: 对外提供 ProfilePanel 宝宝信息输入栏。
  * - [POS]: components/workbench 的输入面板，只负责采集约束并触发清空/生成命令。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -10,13 +10,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.j
 import { Input } from "@/components/ui/input.jsx";
 import { Label } from "@/components/ui/label.jsx";
 import { Select } from "@/components/ui/select.jsx";
+import { DEFAULT_PROFILE } from "@/lib/name-engine.js";
 import { cn } from "@/lib/utils.js";
-import { Field, FilterCheck, Segment, SliderRow, genderOptions, updateNested } from "./common.jsx";
+import { Field, FilterCheck, Segment, SliderRow, genderOptions } from "./common.jsx";
 
 export function ProfilePanel({ profile, setProfile, onClear, onGenerate, isGenerating }) {
-  const setValue = (key, value) => setProfile((current) => updateNested(current, key, value));
-  const setTone = (key, value) => setProfile((current) => ({ ...current, tones: updateNested(current.tones, key, value) }));
-  const setFilter = (key, value) => setProfile((current) => ({ ...current, filters: updateNested(current.filters, key, value) }));
+  const setValue = (key, value) => setProfile((current) => ({ ...current, [key]: value }));
+  const setTone = (key, value) => setProfile((current) => ({ ...current, tones: { ...current.tones, [key]: value } }));
+  const setFilter = (key, value) => setProfile((current) => ({ ...current, filters: { ...current.filters, [key]: value } }));
+  const resetTones = () => setProfile((current) => ({ ...current, tones: { ...DEFAULT_PROFILE.tones } }));
 
   return (
     <Card className="overflow-hidden">
@@ -99,7 +101,7 @@ export function ProfilePanel({ profile, setProfile, onClear, onGenerate, isGener
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label>风格偏好</Label>
-            <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground" type="button">
+            <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground" type="button" onClick={resetTones}>
               <RefreshCw className="h-3.5 w-3.5" />
               重置
             </button>
