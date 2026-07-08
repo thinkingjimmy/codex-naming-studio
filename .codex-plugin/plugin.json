@@ -1,6 +1,6 @@
 {
   "name": "codex-naming-studio",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A Codex naming workbench that opens in the built-in browser, hands GUI requests to Codex through a project state file, and renders structured name analysis back without any API key.",
   "author": {
     "name": "thinkingjimmy",
@@ -16,7 +16,7 @@
   "interface": {
     "displayName": "Codex Naming Studio",
     "shortDescription": "Collect naming constraints and let Codex return structured name analysis.",
-    "longDescription": "Codex Naming Studio opens a local naming workbench in the Codex built-in browser. Users fill baby naming constraints and click generate; Codex picks up the request from the project state file, runs bazi and research steps per the derived plan, and writes ranked Chinese name candidates with scoring, five-elements analysis, source notes, and comparison cards back to the GUI. No API key required.",
+    "longDescription": "Codex Naming Studio opens a local naming workbench in the Codex built-in browser. Users fill baby naming constraints and click generate; Codex picks up the request from the project state file, runs bazi and research steps per the derived plan, and writes ranked Chinese name candidates with scoring, five-elements analysis, source notes, and full-dimension name breakdowns back to the GUI. No API key required.",
     "developerName": "thinkingjimmy",
     "category": "Productivity",
     "capabilities": ["Built-in browser workbench", "Codex-driven naming analysis", "Structured GUI results", "Zero API key"],
