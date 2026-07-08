@@ -40,6 +40,8 @@ const idleStatus = {
   model: "Codex",
 };
 const REQUEST_WAIT_TIMEOUT_MS = 120000;
+// Codex 的监听进程不能永远挂着；请求滞留时唯一可靠的恢复通道是让用户在对话里唤醒 Codex。
+const REQUEST_STALLED_MESSAGE = "Codex 暂时没有接管这个请求。请回到 Codex 对话发送「处理起名请求」，结果会自动显示在这里。";
 
 function mergeResultProfile(current, requestProfile, resultProfile) {
   return normalizeProfile(mergeProfile(mergeProfile(current, requestProfile || {}), resultProfile || {}));
@@ -92,7 +94,7 @@ export function NameWorkbench() {
             provider: "pending-codex",
             model: "Codex",
           });
-          setError(pendingExpired(pending) ? "Codex 还没有接管这个请求。再次点击生成会提交新请求并自动取代旧请求。" : "");
+          setError(pendingExpired(pending) ? REQUEST_STALLED_MESSAGE : "");
           return;
         }
         if (!state.latestResult?.candidates?.length) return;
@@ -132,7 +134,7 @@ export function NameWorkbench() {
         if (request.status === "pending" && !timedOut && Date.now() - startedAt >= REQUEST_WAIT_TIMEOUT_MS) {
           timedOut = true;
           setIsGenerating(false);
-          setError("Codex 还没有接管这个请求。再次点击生成会提交新请求并自动取代旧请求。");
+          setError(REQUEST_STALLED_MESSAGE);
           setStatus({
             provider: "pending-codex",
             model: "Codex",

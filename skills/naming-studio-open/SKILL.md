@@ -27,6 +27,9 @@ node scripts/watch-naming-request.mjs --project-dir /absolute/path/to/user/works
 
 - Exit 0: it prints the latest pending request JSON (profile + plan). Handle it with `$codex-naming-studio:naming-studio-generate`, then re-arm the watcher for the next request. The watcher polls every 300ms by default; override with `--interval` only if needed.
 - Exit 2: timeout with no request. Tell the user the workbench is still open and they can say "继续等待起名请求" to re-arm.
+- Exit for any other reason (harness command limit, interruption): the watcher is gone and GUI clicks will sit pending until the user speaks. Whenever your watcher stops for any reason, end your reply by telling the user: 工作台仍然打开；之后点击「生成好名」后，对我说「处理起名请求」即可继续。
+
+**Important — the watcher is the only ear Codex has.** The GUI cannot wake Codex by itself. Every time you finish a turn in a session where the workbench is open, first call `get_naming_product_state` (or run the watcher with a short `--timeout 5`) to check for a stranded `latestPendingRequest` and handle it before answering anything else.
 
 4. State lives in `<workspace>/.naming-product/state.json`. The GUI polls it through the server; you write results into it via the `save_naming_product_result` MCP tool.
 
