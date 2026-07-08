@@ -271,10 +271,11 @@ function mcpHostBridgeScript() {
         if (!prompt) throw new Error("Missing follow-up prompt.");
         if (!app || typeof app.sendMessage !== "function") throw new Error("Host bridge is unavailable.");
         await waitForReady(app);
+        // 宿主可能弹确认框等用户点击，超时必须覆盖人工反应时间。
         const result = await withTimeout(app.sendMessage({
           role: "user",
           content: contentFromMessage(message, prompt),
-        }), 8000, "Host did not accept the follow-up message.");
+        }), 60000, "Host did not accept the follow-up message.");
         if (result?.isError) throw new Error("Host rejected the follow-up message.");
         return result || {};
       } catch (error) {

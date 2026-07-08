@@ -39,12 +39,16 @@ const idleStatus = {
   provider: "idle",
   model: "Codex",
 };
+// 两级等待窗口：无接管信号时 2 分钟提示恢复路径；follow-up 已被用户确认发送
+// （Codex 必然接管，测算含研究步骤需数分钟）时放宽到 10 分钟。
 const REQUEST_WAIT_TIMEOUT_MS = 120000;
-// 滞留恢复通道是对话消息：widget 模式 follow-up 一般已自动唤醒，此文案仅在唤醒失败时兜底；
+const NOTIFIED_WAIT_TIMEOUT_MS = 600000;
+
+// 滞留恢复通道是对话消息：widget 模式文案保持等待语气（Codex 可能仍在测算）；
 // 兜底（localhost）模式下 watcher 可能已死，必须让用户手动去对话里说话。
 function stalledMessage(requestId) {
   if (hasNamingWidgetBridge()) {
-    return `Codex 暂未接管本次请求。请在对话中发送「处理起名请求 ${requestId || ""}」，结果会自动出现在这里。`;
+    return `等待时间较长。若 Codex 正在测算请稍候，结果会自动出现；若对话中没有动静，请发送「处理起名请求 ${requestId || ""}」。`;
   }
   return "Codex 暂时没有接管这个请求。请回到 Codex 对话发送「处理起名请求」，结果会自动显示在这里。";
 }
@@ -69,6 +73,8 @@ export function NameWorkbench() {
   const [pendingMeta, setPendingMeta] = React.useState(null);
   const [status, setStatus] = React.useState(idleStatus);
   const [error, setError] = React.useState("");
+  // follow-up 已被用户确认发送的带外信号：只影响等待窗口宽度，不参与渲染。
+  const followUpSentRef = React.useRef(false);
 
   const applyNames = React.useCallback((nextNames, nextStatus) => {
     setNames(nextNames);
@@ -137,7 +143,8 @@ export function NameWorkbench() {
         if (cancelled) return;
         const request = state.requests?.[pendingRequestId];
         if (!request) return;
-        if (request.status === "pending" && !timedOut && Date.now() - startedAt >= REQUEST_WAIT_TIMEOUT_MS) {
+        const waitTimeoutMs = followUpSentRef.current ? NOTIFIED_WAIT_TIMEOUT_MS : REQUEST_WAIT_TIMEOUT_MS;
+        if (request.status === "pending" && !timedOut && Date.now() - startedAt >= waitTimeoutMs) {
           timedOut = true;
           setIsGenerating(false);
           setError(stalledMessage(pendingRequestId));
@@ -225,10 +232,13 @@ export function NameWorkbench() {
         provider: pending.provider,
         model: pending.model,
       });
-      // widget 模式：请求已落盘，follow-up 消息负责唤醒 Codex；发送失败不清 pending，立即给恢复指引。
+      // widget 模式：请求已落盘，follow-up 消息负责唤醒 Codex。发送成功意味着 Codex 必然接管，
+      // 等待窗口放宽；发送失败不清 pending，立即给恢复指引。
+      followUpSentRef.current = false;
       if (hasNamingWidgetBridge()) {
         try {
           await sendGenerateFollowUp(pending.requestId);
+          followUpSentRef.current = true;
         } catch (_caught) {
           setError(stalledMessage(pending.requestId));
         }

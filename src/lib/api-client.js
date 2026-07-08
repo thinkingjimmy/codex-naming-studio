@@ -128,7 +128,8 @@ export async function sendGenerateFollowUp(requestId) {
   }
   await waitForWidgetPayload();
   const projectDir = currentWidgetPayload().projectDir;
-  const prompt = `处理起名请求 ${requestId}（项目目录 ${projectDir}）：请按 naming-studio-generate 技能读取 latestPendingRequest 并用 save_naming_product_result 回写结果。`;
+  // 面向用户的确认弹窗会展示这句话：保留「处理起名请求」触发短语与 projectDir，去掉工具与技能术语。
+  const prompt = `请帮我处理起名请求 ${requestId}（项目目录 ${projectDir}），测算完成后把结果回写到起名工作台。`;
   return window.namingMcp.sendFollowUpMessage({ prompt });
 }
 
