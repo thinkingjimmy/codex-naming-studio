@@ -1,28 +1,35 @@
 /**
- * - [INPUT]: 依赖 MCP SDK、zod、naming-state 共享状态库与 name-engine 候选/profile 标准化能力。
- * - [OUTPUT]: 对外注册 get_naming_product_state、save_naming_product_request、save_naming_product_result 三个 MCP 工具。
- * - [POS]: mcp 的唯一协议入口，是 Codex 侧读最新 pending、写结果的通道；浏览器 GUI 走 Vite 状态 middleware 读写同一份文件。
+ * - [INPUT]: 依赖 MCP SDK、ext-apps 的 registerAppTool、zod、naming-state 共享状态库、name-engine 标准化能力与 widget-resource/naming-static-widget 的 widget 构建桥接。
+ * - [OUTPUT]: 对外注册 render_naming_workbench_widget 渲染工具、ui://widget/naming/workbench.html 资源与 get/save 三个状态工具。
+ * - [POS]: mcp 的唯一协议入口；widget 模式下 GUI 经宿主桥直接调状态工具，兜底模式下浏览器 GUI 走 Vite 状态 middleware 读写同一份文件。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import { readFileSync } from "node:fs";
 
+import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
 import { mergeProfile, normalizeCandidates, normalizeProfile } from "../src/lib/name-engine.js";
+import { NAMING_STATIC_BUILD_DIR, namingStaticHtml } from "./lib/naming-static-widget.mjs";
 import {
   nonEmpty,
   publicState,
   readState,
+  resolveNamingPaths,
   saveNamingRequest,
   writeState,
 } from "./lib/naming-state.mjs";
 import { pluginPath } from "./lib/plugin-root.mjs";
+import { injectMcpHostBridge, registerWidgetResource } from "./lib/widget-resource.mjs";
 
 const TOOL_GET_STATE = "get_naming_product_state";
 const TOOL_SAVE_REQUEST = "save_naming_product_request";
 const TOOL_SAVE_RESULT = "save_naming_product_result";
+const TOOL_RENDER_WIDGET = "render_naming_workbench_widget";
+const NAMING_WIDGET_URI = "ui://widget/naming/workbench.html";
+const DEFAULT_DISPLAY_MODE = "fullscreen";
 
 const manifest = JSON.parse(readFileSync(pluginPath(".codex-plugin", "plugin.json"), "utf8"));
 const projectArgsSchema = {
@@ -37,14 +44,92 @@ const server = new McpServer(
   },
   {
     instructions:
-      "Read and persist Naming Studio GUI requests/results in the project state file. Use save_naming_product_result after Codex has produced structured name candidates so the browser workbench can leave loading state.",
+      "Use render_naming_workbench_widget to open the naming workbench as a native Codex widget (pass the user's workspace as projectDir). The widget saves requests itself and posts 处理起名请求 follow-up messages; call save_naming_product_result after Codex has produced structured name candidates so the workbench can leave loading state.",
   },
 );
 
+registerNamingWidget(server);
 registerStateTools(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
+
+// ============================================================
+// Widget 注册：资源惰性构建 + 渲染工具。widgetData 会成为
+// window.openai.toolOutput，是 widget 侧所有工具调用的 projectDir 来源。
+// ============================================================
+function registerNamingWidget(mcpServer) {
+  registerWidgetResource(mcpServer, {
+    name: "naming-workbench-widget",
+    uri: NAMING_WIDGET_URI,
+    title: "Naming Studio Workbench",
+    description:
+      "A native Codex widget that renders the naming workbench directly and persists requests/results in the active project's state file.",
+    resourceDomains: ["data:", "blob:"],
+    html: async () => injectMcpHostBridge(await namingStaticHtml(), {
+      initialDisplayMode: DEFAULT_DISPLAY_MODE,
+    }),
+  });
+
+  registerAppTool(
+    mcpServer,
+    TOOL_RENDER_WIDGET,
+    {
+      title: "Render Naming Workbench Widget",
+      description:
+        "Open the native naming workbench widget for the active Codex project. Pass projectDir for the user's workspace so state is stored under <projectDir>/.naming-product.",
+      inputSchema: {
+        ...projectArgsSchema,
+        title: z.string().trim().optional(),
+        displayMode: z.enum(["fullscreen", "inline"]).optional(),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          resourceUri: NAMING_WIDGET_URI,
+          visibility: ["model", "app"],
+        },
+        "ui/resourceUri": NAMING_WIDGET_URI,
+        "openai/outputTemplate": NAMING_WIDGET_URI,
+        "openai/widgetAccessible": true,
+        "openai/toolInvocation/invoking": "打开起名工作台...",
+        "openai/toolInvocation/invoked": "起名工作台已就绪",
+      },
+    },
+    async (input = {}) => {
+      const { projectDir, stateDir, stateFile } = resolveNamingPaths(input);
+      const title = nonEmpty(input.title) || "起名工作台";
+      const preferredDisplayMode = input.displayMode === "inline" ? "inline" : DEFAULT_DISPLAY_MODE;
+      const payload = {
+        title,
+        rendering: "native-widget",
+        staticDir: NAMING_STATIC_BUILD_DIR,
+        projectDir,
+        stateDir,
+        stateFile,
+        preferredDisplayMode,
+      };
+
+      return {
+        content: [{ type: "text", text: "Rendered naming workbench widget." }],
+        structuredContent: {
+          version: 1,
+          widget: "naming-workbench-widget",
+          ...payload,
+        },
+        _meta: {
+          "openai/outputTemplate": NAMING_WIDGET_URI,
+          widgetData: payload,
+        },
+      };
+    },
+  );
+}
 
 function registerStateTools(mcpServer) {
   mcpServer.registerTool(

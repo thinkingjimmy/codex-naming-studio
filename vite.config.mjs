@@ -56,6 +56,7 @@ function namingStatePlugin() {
 export default defineConfig({
   define: {
     "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV || "development"),
+    __NAMING_WIDGET_BUILD__: JSON.stringify(process.env.NAMING_WIDGET_BUILD === "1"),
   },
   optimizeDeps: {
     include: ["react", "react-dom/client"],

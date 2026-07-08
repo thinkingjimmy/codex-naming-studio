@@ -1,11 +1,11 @@
 /**
- * - [INPUT]: 依赖 react 状态钩子、api-client 状态协议、name-engine 默认/合并/归一化 profile 能力、styles.css 全高工作台壳子、workbench/common 的 providerLabel 与面板组件。
+ * - [INPUT]: 依赖 react 状态钩子、api-client 双模状态协议（含 widget 桥检测与 follow-up 唤醒）、name-engine 默认/合并/归一化 profile 能力、styles.css 全高工作台壳子、workbench/common 的 providerLabel 与面板组件。
  * - [OUTPUT]: 对外提供 NameWorkbench 顶栏 + 三栏全高起名产品组件。
  * - [POS]: components 的产品状态机，协调顶栏状态、左栏输入、中栏候选、右栏解析、latestResult 复水、pending 元信息、超时降级与响应式工作台布局。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import * as React from "react";
-import { loadNameState, submitNameRequest } from "@/lib/api-client.js";
+import { hasNamingWidgetBridge, loadNameState, sendGenerateFollowUp, submitNameRequest } from "@/lib/api-client.js";
 import { DEFAULT_PROFILE, mergeProfile, normalizeProfile } from "@/lib/name-engine.js";
 import { CandidatePanel } from "./workbench/candidate-panel.jsx";
 import { providerLabel } from "./workbench/common.jsx";
@@ -40,8 +40,14 @@ const idleStatus = {
   model: "Codex",
 };
 const REQUEST_WAIT_TIMEOUT_MS = 120000;
-// Codex 的监听进程不能永远挂着；请求滞留时唯一可靠的恢复通道是让用户在对话里唤醒 Codex。
-const REQUEST_STALLED_MESSAGE = "Codex 暂时没有接管这个请求。请回到 Codex 对话发送「处理起名请求」，结果会自动显示在这里。";
+// 滞留恢复通道是对话消息：widget 模式 follow-up 一般已自动唤醒，此文案仅在唤醒失败时兜底；
+// 兜底（localhost）模式下 watcher 可能已死，必须让用户手动去对话里说话。
+function stalledMessage(requestId) {
+  if (hasNamingWidgetBridge()) {
+    return `Codex 暂未接管本次请求。请在对话中发送「处理起名请求 ${requestId || ""}」，结果会自动出现在这里。`;
+  }
+  return "Codex 暂时没有接管这个请求。请回到 Codex 对话发送「处理起名请求」，结果会自动显示在这里。";
+}
 
 function mergeResultProfile(current, requestProfile, resultProfile) {
   return normalizeProfile(mergeProfile(mergeProfile(current, requestProfile || {}), resultProfile || {}));
@@ -94,7 +100,7 @@ export function NameWorkbench() {
             provider: "pending-codex",
             model: "Codex",
           });
-          setError(pendingExpired(pending) ? REQUEST_STALLED_MESSAGE : "");
+          setError(pendingExpired(pending) ? stalledMessage(pending.id) : "");
           return;
         }
         if (!state.latestResult?.candidates?.length) return;
@@ -134,7 +140,7 @@ export function NameWorkbench() {
         if (request.status === "pending" && !timedOut && Date.now() - startedAt >= REQUEST_WAIT_TIMEOUT_MS) {
           timedOut = true;
           setIsGenerating(false);
-          setError(REQUEST_STALLED_MESSAGE);
+          setError(stalledMessage(pendingRequestId));
           setStatus({
             provider: "pending-codex",
             model: "Codex",
@@ -219,6 +225,14 @@ export function NameWorkbench() {
         provider: pending.provider,
         model: pending.model,
       });
+      // widget 模式：请求已落盘，follow-up 消息负责唤醒 Codex；发送失败不清 pending，立即给恢复指引。
+      if (hasNamingWidgetBridge()) {
+        try {
+          await sendGenerateFollowUp(pending.requestId);
+        } catch (_caught) {
+          setError(stalledMessage(pending.requestId));
+        }
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "无法提交起名请求。");
       setIsGenerating(false);

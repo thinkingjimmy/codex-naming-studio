@@ -63,8 +63,8 @@ codex plugin add codex-naming-studio@personal
 | 阶段 | 用户做什么 | Codex 做什么 |
 | --- | --- | --- |
 | 安装 | 把安装提示词发给 Codex；完成后**新开一个对话** | 1. clone 仓库到 `~/plugins/codex-naming-studio` 2. `pnpm install` 3. `pnpm probe:mcp` 验证 MCP 状态工具 4. 确认 `.codex-plugin/plugin.json` 存在 5. 确认 `~/.agents/plugins/marketplace.json` 有插件条目（名字与路径必须与 plugin.json 一致）6. `codex plugin marketplace add ~` 7. `codex plugin add codex-naming-studio@personal` 8. 用 `codex plugin list` 校验状态为 `installed, enabled` 9. 提醒用户新开对话 |
-| 启动 | 在新对话中说"打开起名工作台" | 触发 `naming-studio-open`：后台运行 `NAMING_PROJECT_DIR=<用户工作区> node scripts/start-workbench.mjs`，脚本先健康复用同项目服务、必要时修复依赖并启动 Vite；在内置浏览器打开 `http://127.0.0.1:43318`，然后运行 `scripts/watch-naming-request.mjs` 阻塞等待请求。**禁止**索要任何 API key |
-| 生成 | 左栏填写宝宝信息，点击"生成好名"，等待右侧 loading 结束；连续点击时新请求自动取代旧 pending | watcher 打印出 latestPendingRequest 后触发 `naming-studio-generate`：按 plan 先执行带 skill 的步骤（`naming-studio-bazi` 排盘、`naming-studio-research` 搜索），再按硬约束生成 8-12 个候选，调用 `save_naming_product_result` 回写，然后重新 arm watcher；失败也必须用 `result.error` 回写，绝不让 GUI 空转 |
+| 启动 | 在新对话中说"打开起名工作台" | 触发 `naming-studio-open`：调用 `render_naming_workbench_widget`（projectDir 传用户工作区）把工作台渲染为原生 Codex widget；首次渲染会惰性构建单文件包。widget 渲染失败时才降级到 localhost 兜底（start-workbench + 内置浏览器 + watcher）。**禁止**索要任何 API key |
+| 生成 | 左栏填写宝宝信息，点击"生成好名"，等待右侧 loading 结束；连续点击时新请求自动取代旧 pending | widget 保存请求并自动发出「处理起名请求 <id>」follow-up 消息唤醒 Codex，触发 `naming-studio-generate`：按 plan 先执行带 skill 的步骤（`naming-studio-bazi` 排盘、`naming-studio-research` 搜索），再按硬约束生成 8-12 个候选，调用 `save_naming_product_result` 回写，widget 轮询 1.6s 自取结果；兜底模式由 watcher 传递请求并在回写后重新 arm。失败也必须用 `result.error` 回写，绝不让 GUI 空转 |
 
 ## 故障排查
 
@@ -81,17 +81,19 @@ codex plugin add codex-naming-studio@personal
 打开起名工作台
 ```
 
-Codex 会启动本地工作台服务器并在内置浏览器打开 `http://127.0.0.1:43318`，不需要任何 API key：
+Codex 会把工作台渲染为原生 widget（首次渲染需构建，稍等片刻），不需要任何 API key：
 
 1. 在左栏填写宝宝信息（右侧保持空白状态）。
-2. 点击"生成好名"，请求写入状态文件，右侧进入 loading。
-3. Codex 的请求监听器立即拿到请求与执行计划，按计划测算后调用 `save_naming_product_result` 回写，浏览器自动展示评分、五行、寓意与对比卡片。
+2. 点击"生成好名"，widget 保存请求并自动向对话发送「处理起名请求」消息，右侧进入 loading。
+3. Codex 拿到请求与执行计划，按计划测算后调用 `save_naming_product_result` 回写，widget 轮询自动展示评分、五行、寓意与全维度解析。
+
+widget 渲染失败时 Codex 会降级到 localhost 兜底：启动本地服务器并在内置浏览器打开 `http://127.0.0.1:43318`，由请求监听器传递生成请求。
 
 请求与结果状态保存在当前工作区的 `.naming-product/state.json`。
 
 ## 技能
 
-- `codex-naming-studio:naming-studio-open`：启动工作台服务器、打开内置浏览器并 arm 请求监听器。
+- `codex-naming-studio:naming-studio-open`：渲染原生工作台 widget；失败时降级为 localhost 服务器 + 内置浏览器 + 请求监听器。
 - `codex-naming-studio:naming-studio-generate`：编排 GUI 生成请求——按约束计划先跑八字/研究步骤，再测算候选名并回写结果。
 - `codex-naming-studio:naming-studio-research`：外部事实研究——搜索热门名字避让清单、审查普通话谐音。
 - `codex-naming-studio:naming-studio-bazi`：八字五行算法——节气排四柱、藏干加权统计五行、日主强弱三参、喜用神推导与用字五行判定。出生时间勾选项关闭时整个五行维度从计划、数据与 UI 中消失。
@@ -114,8 +116,8 @@ pnpm quality     # 语法检查 + 构建 + 探针
 <directory>
 .codex-plugin/ - Codex 插件身份声明 (0子目录)
 assets/ - 插件展示资产预留位 (0子目录)
-mcp/ - Codex 侧请求/结果状态 MCP 边界 (1子目录: lib)
-scripts/ - 工作台启动器、请求监听器与 MCP 探针 (0子目录)
+mcp/ - Codex 侧 widget 渲染与请求/结果状态 MCP 边界 (1子目录: lib)
+scripts/ - 兜底工作台启动器、请求监听器、widget 构建器与 MCP 探针 (0子目录)
 skills/ - Codex 操作协议 (4子目录: naming-studio-open, naming-studio-generate, naming-studio-research, naming-studio-bazi)
 src/ - 前端产品机器相 (2子目录: components, lib)
 </directory>
@@ -137,11 +139,12 @@ pnpm-workspace.yaml - pnpm 构建脚本白名单，允许 esbuild 完成 Vite �
 design-qa.md - 源截图与实现截图的设计 QA 门禁记录
 </config>
 
-架构决策: 单一形态——Codex 内置浏览器 + 本地状态服务器 + 文件状态闭环。`.naming-product/state.json` 是唯一真相源：浏览器 GUI 经 Vite middleware 读写它，Codex 经 MCP 状态工具读写它（候选统一走 normalizeCandidates），状态层维护 `latestPendingRequest` 并让旧 pending 进入 `superseded`，`scripts/watch-naming-request.mjs` 只阻塞等待最新请求。没有任何模型密钥；Codex 自身推理就是模型。
+架构决策: 双形态、单真相源。主形态是 MCP Apps 原生 widget（Cowart 模式）：`render_naming_workbench_widget` 渲染单文件 widget，GUI 经 `window.namingMcp` 直调 MCP 状态工具，生成点击以 `sendFollowUpMessage` 唤醒 Codex 新回合——事件驱动，无监听进程。兜底形态是 localhost（内置浏览器 + Vite middleware + watcher），仅供开发与 widget 渲染失败时降级。`.naming-product/state.json` 是两种形态共享的唯一真相源：候选统一走 normalizeCandidates，状态层维护 `latestPendingRequest` 并让旧 pending 进入 `superseded`。没有任何模型密钥；Codex 自身推理就是模型。
 
 开发规范: 新增或改变业务文件时先更新 L3 头部，再检查最近 README.md。
 
 变更日志:
+- 2026-07-08: 原生 widget 以 Cowart 模式回归（v0.5.0）——新增 render_naming_workbench_widget 渲染工具与 ui://widget/naming/workbench.html 资源，api-client 双模路由（widget 桥 / localhost fetch），生成点击经 sendFollowUpMessage 唤醒 Codex，根治「watcher 死后请求滞留」的结构性缺陷；localhost 全链路保留为兜底，探针覆盖 widget 单文件产物 CSP 断言。
 - 2026-07-08: Product Design 审阅后压实工作台——候选中栏改为扫描表，选中态从整块描边改为左侧状态条，右栏解析头部收敛，三栏共享面板阴影退场。
 - 2026-07-08: 优化工作台响应式布局——三栏断点提前到 1120px，中间 gutter 归零，候选行与对比卡片压实，宽屏不再误掉单列。
 - 2026-07-08: 修复连续生成无响应感——状态层新增单一活跃 pending 与 superseded 退场规则，watcher 只消费 latestPendingRequest，GUI 显示已提交批次与 request id，探针覆盖旧请求防回写。

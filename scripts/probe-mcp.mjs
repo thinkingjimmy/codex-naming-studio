@@ -1,7 +1,7 @@
 /**
  * - [INPUT]: 依赖 MCP client、临时目录与 Naming Product stdio MCP server。
- * - [OUTPUT]: 对外提供 MCP 状态工具、单一 pending 状态机与约束路由的快速探针。
- * - [POS]: scripts 的质量门禁，验证 Codex 侧读最新请求、写结果的闭环不是假成功。
+ * - [OUTPUT]: 对外提供 MCP 状态工具、单一 pending 状态机、约束路由与 widget 资源/渲染工具的快速探针。
+ * - [POS]: scripts 的质量门禁，验证 Codex 侧读最新请求、写结果与 widget 单文件构建的闭环不是假成功。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import { mkdtemp } from "node:fs/promises";
@@ -30,6 +30,7 @@ try {
     "get_naming_product_state",
     "save_naming_product_request",
     "save_naming_product_result",
+    "render_naming_workbench_widget",
   ];
   for (const toolName of requiredTools) {
     if (!toolNames.includes(toolName)) throw new Error(`${toolName} not found. Tools: ${toolNames.join(", ")}`);
@@ -197,7 +198,46 @@ try {
     throw new Error(`Three-character-name guard failed. Got: ${lengthCandidate?.fullName || "<empty>"}`);
   }
 
-  console.log("OK: Naming Product MCP state tools and constraint routing are working.");
+  // ------------------------------------------------------------
+  // Widget 闭环：渲染工具回显 projectDir，资源读取触发真实惰性构建，
+  // 断言产物是 CSP 兼容的单文件 HTML 且带宿主桥。
+  // ------------------------------------------------------------
+  const widgetUri = "ui://widget/naming/workbench.html";
+  const renderWidget = await client.callTool({
+    name: "render_naming_workbench_widget",
+    arguments: { projectDir },
+  });
+  if (renderWidget.isError) {
+    throw new Error(renderWidget.content?.find((item) => item.type === "text")?.text || "render_naming_workbench_widget failed.");
+  }
+  if (renderWidget.structuredContent?.projectDir !== projectDir) {
+    throw new Error("Render tool must echo the absolute projectDir into structuredContent.");
+  }
+  if (renderWidget.structuredContent?.preferredDisplayMode !== "fullscreen") {
+    throw new Error("Render tool must default preferredDisplayMode to fullscreen.");
+  }
+
+  const resource = await client.readResource({ uri: widgetUri });
+  const widgetContent = resource.contents?.[0];
+  if (!widgetContent?._meta?.["openai/widgetCSP"]) {
+    throw new Error("Widget resource must carry openai/widgetCSP metadata.");
+  }
+  const widgetHtml = widgetContent.text || "";
+  for (const [marker, label] of [
+    ["window.namingMcp", "host bridge api"],
+    ["__NAMING_WIDGET_FETCH_GUARD__", "fetch guard"],
+    ["__NAMING_MCP_APPS__", "ext-apps bundle"],
+  ]) {
+    if (!widgetHtml.includes(marker)) throw new Error(`Widget HTML is missing ${label} (${marker}).`);
+  }
+  const widgetShell = widgetHtml
+    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[\s\S]*?<\/style>/gi, "");
+  if (/<script\b[^>]*\btype\s*=\s*["']module["']/i.test(widgetShell) || /<link\b[^>]+\bhref\s*=/i.test(widgetShell)) {
+    throw new Error("Widget HTML must not reference module scripts or external stylesheets.");
+  }
+
+  console.log("OK: Naming Product MCP state tools, constraint routing, and the native widget resource are working.");
 } finally {
   await client.close();
 }
