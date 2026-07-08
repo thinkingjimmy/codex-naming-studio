@@ -1,6 +1,6 @@
 /**
- * - [INPUT]: 依赖本文件内的候选模板、指标标签与简单评分规则。
- * - [OUTPUT]: 对外提供 DEFAULT_PROFILE、METRIC_LABELS、buildCandidates、normalizeCandidates、sortCandidates。
+ * - [INPUT]: 依赖本文件内的候选模板、姓名长度选项、指标标签与简单评分规则。
+ * - [OUTPUT]: 对外提供 DEFAULT_PROFILE、NAME_LENGTH_OPTIONS、METRIC_LABELS、mergeProfile、normalizeProfile、buildCandidates、normalizeCandidates、sortCandidates。
  * - [POS]: lib 的起名领域引擎与候选标准化层，让 UI 和后端共享同一数据形状。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -11,7 +11,7 @@ export const DEFAULT_PROFILE = {
   calendar: "solar",
   birthDate: "2024-05-20",
   birthTime: "10:18",
-  nameLength: "double",
+  fullNameLength: 3,
   preferredChars: "",
   blockedChars: "",
   tones: {
@@ -32,6 +32,11 @@ export const DEFAULT_PROFILE = {
   },
 };
 
+export const NAME_LENGTH_OPTIONS = [
+  { value: 2, label: "双字名" },
+  { value: 3, label: "三字名" },
+];
+
 export const METRIC_LABELS = [
   ["八字五行", "bazi"],
   ["音律音调", "sound"],
@@ -40,6 +45,8 @@ export const METRIC_LABELS = [
   ["避讳风险", "risk"],
   ["风格匹配", "style"],
 ];
+
+const DEFAULT_FULL_NAME_LENGTH = 3;
 
 const CANDIDATE_TEMPLATES = [
   {
@@ -183,20 +190,41 @@ function rotate(items, offset) {
   return items.map((_, index) => items[(index + offset) % items.length]);
 }
 
-function normalizeProfile(profile = {}) {
-  const source = profile && typeof profile === "object" ? profile : {};
+function fullNameLengthFrom(source, fallback = DEFAULT_FULL_NAME_LENGTH) {
+  const fullNameLength = Number(source?.fullNameLength);
+  if (fullNameLength === 2 || fullNameLength === 3) return fullNameLength;
+  if (source?.nameLength === "single") return 2;
+  if (source?.nameLength === "double") return 3;
+  return fallback;
+}
+
+function withoutLegacyNameLength(source) {
+  const { nameLength: _legacyNameLength, ...clean } = source;
+  return clean;
+}
+
+export function mergeProfile(base = {}, override = {}) {
+  const left = base && typeof base === "object" ? base : {};
+  const right = override && typeof override === "object" ? override : {};
+  const fullNameLength = fullNameLengthFrom(right, fullNameLengthFrom(left));
   return {
-    ...DEFAULT_PROFILE,
-    ...source,
+    ...withoutLegacyNameLength(left),
+    ...withoutLegacyNameLength(right),
+    fullNameLength,
     tones: {
-      ...DEFAULT_PROFILE.tones,
-      ...(source.tones || {}),
+      ...(left.tones || {}),
+      ...(right.tones || {}),
     },
     filters: {
-      ...DEFAULT_PROFILE.filters,
-      ...(source.filters || {}),
+      ...(left.filters || {}),
+      ...(right.filters || {}),
     },
   };
+}
+
+export function normalizeProfile(profile = {}) {
+  const source = profile && typeof profile === "object" ? profile : {};
+  return mergeProfile(DEFAULT_PROFILE, source);
 }
 
 function applyProfileScore(template, profile, index) {
@@ -206,16 +234,33 @@ function applyProfileScore(template, profile, index) {
   return Math.min(99, Math.max(80, template.score + genderLift + lunarLift + modernDrift - (index > 8 ? 1 : 0)));
 }
 
+function expectedGivenLength(profile) {
+  const fullProfile = normalizeProfile(profile);
+  const surname = (fullProfile.surname || DEFAULT_PROFILE.surname).trim() || DEFAULT_PROFILE.surname;
+  return Math.max(1, fullProfile.fullNameLength - Array.from(surname).length);
+}
+
+function hasExpectedGivenLength(value, profile) {
+  return Array.from(String(value || "").trim()).length === expectedGivenLength(profile);
+}
+
+function normalizeGiven(value, fallback, profile) {
+  const source = hasExpectedGivenLength(value, profile) ? value : fallback;
+  return Array.from(String(source || "").trim()).slice(0, expectedGivenLength(profile)).join("");
+}
+
 export function buildCandidates(profile = DEFAULT_PROFILE, batch = 0) {
   const fullProfile = normalizeProfile(profile);
   const useBazi = fullProfile.useBazi !== false;
   const surname = (fullProfile.surname || DEFAULT_PROFILE.surname).trim() || DEFAULT_PROFILE.surname;
   return rotate(CANDIDATE_TEMPLATES, batch % CANDIDATE_TEMPLATES.length).map((template, index) => {
     const score = applyProfileScore(template, fullProfile, index);
+    const given = normalizeGiven(template.given, template.given, fullProfile);
     return {
       ...template,
-      id: `${surname}-${template.given}-${batch}`,
-      fullName: `${surname}${template.given}`,
+      id: `${surname}-${given}-${batch}`,
+      given,
+      fullName: `${surname}${given}`,
       surname,
       rank: index + 1,
       score,
@@ -238,15 +283,16 @@ export function normalizeCandidates(candidates, profile = DEFAULT_PROFILE, batch
   const surname = (fullProfile.surname || DEFAULT_PROFILE.surname).trim() || DEFAULT_PROFILE.surname;
   return candidates.map((candidate, index) => {
     const base = fallback[index % fallback.length];
-    const given = String(candidate.given || base.given).slice(0, 4);
+    const source = hasExpectedGivenLength(candidate.given, fullProfile) ? candidate : {};
+    const given = normalizeGiven(source.given, base.given, fullProfile);
     const elements = useBazi
-      ? (Array.isArray(candidate.elements) && candidate.elements.length >= 2 ? candidate.elements.slice(0, 2) : base.elements)
+      ? (Array.isArray(source.elements) && source.elements.length >= 2 ? source.elements.slice(0, 2) : base.elements)
       : [];
-    const metrics = Array.isArray(candidate.metrics) && candidate.metrics.length === 6 ? candidate.metrics : base.metrics;
-    const score = Number.isFinite(candidate.score) ? Math.min(99, Math.max(80, Math.round(candidate.score))) : base.score;
+    const metrics = Array.isArray(source.metrics) && source.metrics.length === 6 ? source.metrics : base.metrics;
+    const score = Number.isFinite(source.score) ? Math.min(99, Math.max(80, Math.round(source.score))) : base.score;
     return {
       ...base,
-      ...candidate,
+      ...source,
       id: `${surname}-${given}-${batch}-${index}`,
       surname,
       given,
@@ -256,10 +302,10 @@ export function normalizeCandidates(candidates, profile = DEFAULT_PROFILE, batch
       elements,
       metrics: useBazi ? metrics : [null, ...metrics.slice(1)],
       distribution: useBazi
-        ? (Array.isArray(candidate.distribution) && candidate.distribution.length === 5 ? candidate.distribution : base.distribution)
+        ? (Array.isArray(source.distribution) && source.distribution.length === 5 ? source.distribution : base.distribution)
         : null,
       branches: useBazi
-        ? (Array.isArray(candidate.branches) && candidate.branches.length === 4 ? candidate.branches : base.branches)
+        ? (Array.isArray(source.branches) && source.branches.length === 4 ? source.branches : base.branches)
         : null,
       complement: elements.join("、"),
     };

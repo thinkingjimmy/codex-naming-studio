@@ -1,7 +1,7 @@
 /**
- * - [INPUT]: 依赖 MCP SDK、zod、naming-state 共享状态库与 name-engine 标准化能力。
+ * - [INPUT]: 依赖 MCP SDK、zod、naming-state 共享状态库与 name-engine 候选/profile 标准化能力。
  * - [OUTPUT]: 对外注册 get_naming_product_state、save_naming_product_request、save_naming_product_result 三个 MCP 工具。
- * - [POS]: mcp 的唯一协议入口，是 Codex 侧读请求、写结果的通道；浏览器 GUI 走 Vite 状态 middleware 读写同一份文件。
+ * - [POS]: mcp 的唯一协议入口，是 Codex 侧读最新 pending、写结果的通道；浏览器 GUI 走 Vite 状态 middleware 读写同一份文件。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import { readFileSync } from "node:fs";
@@ -10,7 +10,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-import { normalizeCandidates } from "../src/lib/name-engine.js";
+import { mergeProfile, normalizeCandidates, normalizeProfile } from "../src/lib/name-engine.js";
 import {
   nonEmpty,
   publicState,
@@ -146,10 +146,16 @@ function registerStateTools(mcpServer) {
           content: [{ type: "text", text: `Unknown Naming Product request: ${requestId}` }],
         };
       }
+      if (request.status === "superseded") {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Naming Product request was superseded: ${requestId}` }],
+        };
+      }
 
       const now = new Date().toISOString();
       const result = input.result || {};
-      const profile = result.profile || request.profile || {};
+      const profile = normalizeProfile(mergeProfile(request.profile || {}, result.profile || {}));
       const batch = Number.isFinite(result.batch) ? result.batch : request.batch || 0;
       const explicitError = nonEmpty(result.error);
       const candidates = Array.isArray(result.candidates)

@@ -3,9 +3,9 @@
 > L2 | 父级: ../README.md
 
 成员清单
-naming-studio-open/SKILL.md: 启动工作台服务器、打开内置浏览器并 arm 请求监听器的操作协议，禁止索要 API key。
+naming-studio-open/SKILL.md: 启动工作台服务器、打开内置浏览器并 arm 最新 pending 请求监听器的操作协议，禁止索要 API key。
 naming-studio-open/agents/openai.yaml: open skill 的 Codex interface 元数据与默认提示词。
-naming-studio-generate/SKILL.md: 编排 NAMING_PRODUCT_REQUEST_ID 生成请求——按 request.plan 先跑研究步骤再生成，含候选数据形状与失败回写要求。
+naming-studio-generate/SKILL.md: 编排 latestPendingRequest 生成请求——按 request.plan 先跑研究步骤再生成，含候选数据形状、superseded 防护与重新 arm watcher 要求。
 naming-studio-generate/agents/openai.yaml: generate skill 的 Codex interface 元数据与默认提示词。
 naming-studio-research/SKILL.md: 外部事实研究协议——热门名字避让清单搜索与普通话谐音审查，只回馈生成流程不写 GUI。
 naming-studio-research/agents/openai.yaml: research skill 的 Codex interface 元数据与默认提示词。

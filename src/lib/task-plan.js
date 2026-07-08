@@ -1,9 +1,11 @@
 /**
- * - [INPUT]: 依赖 profile 数据形状（useBazi、calendar、birthDate/birthTime、filters、preferredChars、blockedChars）。
+ * - [INPUT]: 依赖 profile 数据形状（fullNameLength、useBazi、calendar、birthDate/birthTime、tones、filters、preferredChars、blockedChars）与 tone-preferences 强度摘要。
  * - [OUTPUT]: 对外提供 buildTaskPlan(profile)，把 GUI 约束翻译为 Codex 执行步骤（skill 触发或生成硬约束）。
  * - [POS]: lib 的约束路由层，是 GUI 勾选与 Codex skill 调度之间的单一真相源，被 naming-state 状态库消费。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
+
+import { describeTonePreferences, hasTonePreferences } from "./tone-preferences.js";
 
 const RESEARCH_SKILL = "naming-studio-research";
 const BAZI_SKILL = "naming-studio-bazi";
@@ -12,12 +14,26 @@ function nonEmpty(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function fullNameLength(profile) {
+  return Number(profile.fullNameLength) === 2 ? 2 : 3;
+}
+
 // ============================================================
 // 规则表：一条约束 = 一行规则。带 skill 的步骤要求 Codex 先触发
 // 对应 skill；不带 skill 的步骤是生成候选时的硬约束。
 // 新增 GUI 约束时只加规则行，不加分支。
 // ============================================================
 const PLAN_RULES = [
+  {
+    id: "name-length",
+    when: () => true,
+    step: (profile) => ({
+      instruction:
+        fullNameLength(profile) === 2
+          ? "用户选择双字名：候选完整姓名必须为 2 个汉字；按一字姓场景，given 必须为 1 个汉字。"
+          : "用户选择三字名：候选完整姓名必须为 3 个汉字；按一字姓场景，given 必须为 2 个汉字。",
+    }),
+  },
   {
     id: "bazi-analysis",
     when: (profile) => profile.useBazi !== false,
@@ -50,6 +66,13 @@ const PLAN_RULES = [
       skill: RESEARCH_SKILL,
       topic: "mandarin-homophone",
       instruction: "对每个候选名做普通话谐音审查，必要时搜索验证，确认无负面谐音与绰号联想后才可入选。",
+    }),
+  },
+  {
+    id: "style-preferences",
+    when: (profile) => hasTonePreferences(profile.tones),
+    step: (profile) => ({
+      instruction: `按风格偏好调整候选气质、摘要与风格匹配评分：${describeTonePreferences(profile.tones)}。高强度项优先体现，关闭项不要强行加入。`,
     }),
   },
   {

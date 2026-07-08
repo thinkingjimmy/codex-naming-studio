@@ -1,5 +1,5 @@
 /**
- * - [INPUT]: 依赖 react 组合输入状态、ui 表单组件、@phosphor-icons/react 图标、name-engine 的 DEFAULT_PROFILE 与 workbench/common 的共享控件。
+ * - [INPUT]: 依赖 react 组合输入状态、ui 表单组件、@phosphor-icons/react 图标、name-engine 的 DEFAULT_PROFILE/NAME_LENGTH_OPTIONS 与 workbench/common 的共享控件。
  * - [OUTPUT]: 对外提供 ProfilePanel 宝宝信息输入栏。
  * - [POS]: components/workbench 的输入面板，只负责采集约束并触发清空/生成命令。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button.jsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.jsx";
 import { Input } from "@/components/ui/input.jsx";
 import { Label } from "@/components/ui/label.jsx";
-import { DEFAULT_PROFILE } from "@/lib/name-engine.js";
+import { DEFAULT_PROFILE, NAME_LENGTH_OPTIONS } from "@/lib/name-engine.js";
 import { cn } from "@/lib/utils.js";
 import { Field, FilterCheck, Segment, SliderRow, genderOptions } from "./common.jsx";
 
@@ -96,15 +96,15 @@ export function ProfilePanel({ profile, setProfile, onClear, onGenerate, isGener
         </Field>
         <Field label="名字字数">
           <div className="grid grid-cols-2 rounded-md border border-border bg-white/70 p-1">
-            {[
-              ["double", "双字名"],
-              ["single", "三字名"],
-            ].map(([id, label]) => (
+            {NAME_LENGTH_OPTIONS.map(({ value, label }) => (
               <button
-                key={id}
+                key={value}
                 type="button"
-                onClick={() => setValue("nameLength", id)}
-                className={cn("h-8 rounded-sm text-sm", profile.nameLength === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary")}
+                onClick={() => setValue("fullNameLength", value)}
+                className={cn(
+                  "h-8 rounded-sm text-sm",
+                  profile.fullNameLength === value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary",
+                )}
               >
                 {label}
               </button>
@@ -125,18 +125,18 @@ export function ProfilePanel({ profile, setProfile, onClear, onGenerate, isGener
               重置
             </button>
           </div>
-          <SliderRow label="古典文雅" value={profile.tones.classic} suffix="较强" onChange={(value) => setTone("classic", value)} />
-          <SliderRow label="温润平和" value={profile.tones.gentle} suffix="强" onChange={(value) => setTone("gentle", value)} />
-          <SliderRow label="明朗大气" value={profile.tones.bright} suffix="中等" onChange={(value) => setTone("bright", value)} />
-          <SliderRow label="诗词典故" value={profile.tones.poetic} suffix="较强" onChange={(value) => setTone("poetic", value)} />
-          <SliderRow label="现代简约" value={profile.tones.modern} suffix="中等" onChange={(value) => setTone("modern", value)} />
+          <SliderRow label="古典文雅" value={profile.tones.classic} onChange={(value) => setTone("classic", value)} />
+          <SliderRow label="温润平和" value={profile.tones.gentle} onChange={(value) => setTone("gentle", value)} />
+          <SliderRow label="明朗大气" value={profile.tones.bright} onChange={(value) => setTone("bright", value)} />
+          <SliderRow label="诗词典故" value={profile.tones.poetic} onChange={(value) => setTone("poetic", value)} />
+          <SliderRow label="现代简约" value={profile.tones.modern} onChange={(value) => setTone("modern", value)} />
         </div>
         <div className="space-y-2">
           <Label className="flex items-center gap-2">
             更多筛选
             <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
           </Label>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <FilterCheck checked={profile.filters.rare} label="避开生僻字" onChange={(value) => setFilter("rare", value)} />
             <FilterCheck checked={profile.filters.polyphone} label="避开多音字" onChange={(value) => setFilter("polyphone", value)} />
             <FilterCheck checked={profile.filters.unclear} label="避开拼音不准" onChange={(value) => setFilter("unclear", value)} />

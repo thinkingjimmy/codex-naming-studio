@@ -53,7 +53,7 @@ This skill turns a birth date/time into a verifiable five-elements profile that 
 
 ### 7. 补益策略
 
-- 双字名：首选"两字均为喜用神"或"一字喜用 + 一字通关"，忌神字直接排除。
+- 三字姓名（两字 given）：首选"两字均为喜用神"或"一字喜用 + 一字通关"，忌神字直接排除。
 - `elements` 回填每个候选字的五行；`complement` 与喜用神一致。
 - metrics 第一项（八字五行，满分 25）按补益质量打分：两字皆喜用 22-25，一喜用一中性 18-21，仅一字喜用 14-17。
 

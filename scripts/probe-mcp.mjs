@@ -1,7 +1,7 @@
 /**
  * - [INPUT]: 依赖 MCP client、临时目录与 Naming Product stdio MCP server。
- * - [OUTPUT]: 对外提供 MCP 状态工具与约束路由的快速探针。
- * - [POS]: scripts 的质量门禁，验证 Codex 侧读请求、写结果的闭环不是假成功。
+ * - [OUTPUT]: 对外提供 MCP 状态工具、单一 pending 状态机与约束路由的快速探针。
+ * - [POS]: scripts 的质量门禁，验证 Codex 侧读最新请求、写结果的闭环不是假成功。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import { mkdtemp } from "node:fs/promises";
@@ -48,6 +48,7 @@ try {
         profile: {
           surname: "林",
           gender: "boy",
+          fullNameLength: 3,
           birthDate: "2024-05-20",
           birthTime: "10:18",
           preferredChars: "家",
@@ -60,7 +61,11 @@ try {
     throw new Error(saveRequest.content?.find((item) => item.type === "text")?.text || "save_naming_product_request failed.");
   }
   const planIds = (saveRequest.structuredContent?.request?.plan || []).map((step) => step.id);
-  for (const expected of ["bazi-analysis", "research-popular-names", "include-preferred-chars"]) {
+  const savedProfile = saveRequest.structuredContent?.request?.profile || {};
+  if (savedProfile.fullNameLength !== 3 || Object.hasOwn(savedProfile, "nameLength")) {
+    throw new Error("Profile length semantics must persist as fullNameLength only.");
+  }
+  for (const expected of ["name-length", "bazi-analysis", "research-popular-names", "style-preferences", "include-preferred-chars"]) {
     if (!planIds.includes(expected)) {
       throw new Error(`Constraint routing did not derive plan step ${expected}. Got: ${planIds.join(", ")}`);
     }
@@ -68,11 +73,58 @@ try {
   if (planIds.includes("skip-bazi")) {
     throw new Error("skip-bazi step must not appear when useBazi is enabled.");
   }
-  const saveResult = await client.callTool({
+
+  const newerRequestId = "probe-request-newer";
+  const saveNewerRequest = await client.callTool({
+    name: "save_naming_product_request",
+    arguments: {
+      projectDir,
+      request: {
+        id: newerRequestId,
+        batch: 2,
+        source: "probe",
+        profile: {
+          surname: "林",
+          gender: "boy",
+          fullNameLength: 3,
+          birthDate: "2024-05-20",
+          birthTime: "10:18",
+          filters: { popularName: true },
+        },
+      },
+    },
+  });
+  if (saveNewerRequest.isError) {
+    throw new Error(saveNewerRequest.content?.find((item) => item.type === "text")?.text || "newer save_naming_product_request failed.");
+  }
+  if (saveNewerRequest.structuredContent?.requests?.[requestId]?.status !== "superseded") {
+    throw new Error("Older pending request must be superseded when a newer request is saved.");
+  }
+  if (saveNewerRequest.structuredContent?.latestPendingRequest?.id !== newerRequestId) {
+    throw new Error("latestPendingRequest must point at the newest active pending request.");
+  }
+
+  const staleResult = await client.callTool({
     name: "save_naming_product_result",
     arguments: {
       projectDir,
       requestId,
+      result: {
+        provider: "probe",
+        model: "probe-model",
+        candidates: [{ given: "旧名", score: 80 }],
+      },
+    },
+  });
+  if (!staleResult.isError) {
+    throw new Error("Superseded requests must reject stale result writes.");
+  }
+
+  const saveResult = await client.callTool({
+    name: "save_naming_product_result",
+    arguments: {
+      projectDir,
+      requestId: newerRequestId,
       result: {
         provider: "probe",
         model: "probe-model",
@@ -101,8 +153,48 @@ try {
   if (state.structuredContent?.latestResult?.candidates?.[0]?.fullName !== "林景和") {
     throw new Error("Saved result was not normalized and exposed to workbench state.");
   }
-  if (state.structuredContent?.requests?.[requestId]?.status !== "completed") {
+  if (state.structuredContent?.requests?.[newerRequestId]?.status !== "completed") {
     throw new Error("Request did not reach completed status after result save.");
+  }
+  if (state.structuredContent?.requests?.[requestId]?.status !== "superseded") {
+    throw new Error("Superseded request status did not persist after newer result save.");
+  }
+
+  const lengthRequestId = "probe-name-length";
+  await client.callTool({
+    name: "save_naming_product_request",
+    arguments: {
+      projectDir,
+      request: {
+        id: lengthRequestId,
+        batch: 0,
+        source: "probe",
+        profile: {
+          surname: "王",
+          fullNameLength: 3,
+        },
+      },
+    },
+  });
+  await client.callTool({
+    name: "save_naming_product_result",
+    arguments: {
+      projectDir,
+      requestId: lengthRequestId,
+      result: {
+        provider: "probe",
+        model: "probe-model",
+        candidates: [{ given: "昱", score: 94 }],
+      },
+    },
+  });
+  const lengthState = await client.callTool({
+    name: "get_naming_product_state",
+    arguments: { projectDir },
+  });
+  const lengthCandidate = lengthState.structuredContent?.requests?.[lengthRequestId]?.result?.candidates?.[0];
+  if (Array.from(lengthCandidate?.given || "").length !== 2 || lengthCandidate?.fullName === "王昱") {
+    throw new Error(`Three-character-name guard failed. Got: ${lengthCandidate?.fullName || "<empty>"}`);
   }
 
   console.log("OK: Naming Product MCP state tools and constraint routing are working.");

@@ -1,23 +1,30 @@
 /**
- * - [INPUT]: 依赖 react 状态钩子、@phosphor-icons/react 状态图标、api-client 状态协议、默认宝宝信息与工作台面板组件。
- * - [OUTPUT]: 对外提供 NameWorkbench 三栏起名产品组件。
- * - [POS]: components 的产品状态机，协调左栏输入、中栏候选、右栏解析，不承载具体面板渲染细节。
+ * - [INPUT]: 依赖 react 状态钩子、api-client 状态协议、name-engine 默认/合并/归一化 profile 能力、styles.css 工作台壳子与面板组件。
+ * - [OUTPUT]: 对外提供 NameWorkbench 零缝隙三栏起名产品组件。
+ * - [POS]: components 的产品状态机，协调左栏输入、中栏候选、右栏解析、latestResult 复水、pending 元信息、超时降级与响应式工作台布局。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import * as React from "react";
-import { Leaf } from "@phosphor-icons/react";
 import { loadNameState, submitNameRequest } from "@/lib/api-client.js";
-import { DEFAULT_PROFILE } from "@/lib/name-engine.js";
+import { DEFAULT_PROFILE, mergeProfile, normalizeProfile } from "@/lib/name-engine.js";
 import { CandidatePanel } from "./workbench/candidate-panel.jsx";
 import { DetailPanel } from "./workbench/detail-panel.jsx";
-import { HeaderNav } from "./workbench/header-nav.jsx";
 import { ProfilePanel } from "./workbench/profile-panel.jsx";
 
 const idleStatus = {
   provider: "idle",
   model: "Codex",
-  notice: "填写左侧信息后，点击生成交给 Codex 测算。",
 };
+const REQUEST_WAIT_TIMEOUT_MS = 120000;
+
+function mergeResultProfile(current, requestProfile, resultProfile) {
+  return normalizeProfile(mergeProfile(mergeProfile(current, requestProfile || {}), resultProfile || {}));
+}
+
+function pendingExpired(request) {
+  const time = Date.parse(request?.updatedAt || request?.createdAt || "");
+  return Number.isFinite(time) && Date.now() - time >= REQUEST_WAIT_TIMEOUT_MS;
+}
 
 export function NameWorkbench() {
   const [profile, setProfile] = React.useState(DEFAULT_PROFILE);
@@ -28,6 +35,7 @@ export function NameWorkbench() {
   const [comparedIds, setComparedIds] = React.useState([]);
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [pendingRequestId, setPendingRequestId] = React.useState("");
+  const [pendingMeta, setPendingMeta] = React.useState(null);
   const [status, setStatus] = React.useState(idleStatus);
   const [error, setError] = React.useState("");
 
@@ -40,9 +48,57 @@ export function NameWorkbench() {
   }, []);
 
   React.useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateLatestResult() {
+      try {
+        const state = await loadNameState();
+        if (cancelled) return;
+        if (state.latestPendingRequest) {
+          const pending = state.latestPendingRequest;
+          setProfile((current) => mergeResultProfile(current, pending.profile, null));
+          setBatch(pending.batch || 0);
+          setNames([]);
+          setSelectedId("");
+          setComparedIds([]);
+          setPendingRequestId(pending.id);
+          setPendingMeta({
+            requestId: pending.id,
+            batch: pending.batch || 0,
+          });
+          setIsGenerating(!pendingExpired(pending));
+          setStatus({
+            provider: "pending-codex",
+            model: "Codex",
+          });
+          setError(pendingExpired(pending) ? "Codex 还没有接管这个请求。再次点击生成会提交新请求并自动取代旧请求。" : "");
+          return;
+        }
+        if (!state.latestResult?.candidates?.length) return;
+        applyNames(state.latestResult.candidates, {
+          provider: state.latestResult.provider || "codex",
+          model: state.latestResult.model || "Codex",
+        });
+        setProfile((current) => mergeResultProfile(current, state.latestRequest?.profile, state.latestResult.profile));
+        setBatch(state.latestResult.batch || state.latestRequest?.batch || 0);
+        setError("");
+      } catch (_caught) {
+        // 初次复水失败不遮挡表单；用户仍可重新生成。
+      }
+    }
+
+    void hydrateLatestResult();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyNames]);
+
+  React.useEffect(() => {
     if (!pendingRequestId) return undefined;
     let cancelled = false;
     let inFlight = false;
+    let timedOut = false;
+    const startedAt = Date.now();
 
     async function pollResult() {
       if (inFlight) return;
@@ -52,25 +108,34 @@ export function NameWorkbench() {
         if (cancelled) return;
         const request = state.requests?.[pendingRequestId];
         if (!request) return;
+        if (request.status === "pending" && !timedOut && Date.now() - startedAt >= REQUEST_WAIT_TIMEOUT_MS) {
+          timedOut = true;
+          setIsGenerating(false);
+          setError("Codex 还没有接管这个请求。再次点击生成会提交新请求并自动取代旧请求。");
+          setStatus({
+            provider: "pending-codex",
+            model: "Codex",
+          });
+        }
         if (request.status === "completed" && request.result?.candidates?.length) {
           applyNames(request.result.candidates, {
             provider: request.result.provider || "codex",
             model: request.result.model || "Codex",
-            notice: request.result.notice || "Codex 已完成命名测算，结果已回写到 GUI。",
           });
-          setProfile((current) => request.result.profile || current);
+          setProfile((current) => mergeResultProfile(current, request.profile, request.result.profile));
           setPendingRequestId("");
+          setPendingMeta(null);
           setIsGenerating(false);
           setError("");
         }
         if (request.status === "error") {
           setError(request.error || "Codex 未能完成本次测算。");
           setPendingRequestId("");
+          setPendingMeta(null);
           setIsGenerating(false);
           setStatus({
             provider: "pending-codex",
             model: "Codex",
-            notice: "Codex 返回了错误，工作台已退出 loading。",
           });
         }
       } catch (caught) {
@@ -111,6 +176,7 @@ export function NameWorkbench() {
     setFavorites(new Set());
     setComparedIds([]);
     setPendingRequestId("");
+    setPendingMeta(null);
     setIsGenerating(false);
     setError("");
     setStatus(idleStatus);
@@ -122,27 +188,32 @@ export function NameWorkbench() {
     setNames([]);
     setSelectedId("");
     setComparedIds([]);
+    setPendingRequestId("");
+    setPendingMeta(null);
     setIsGenerating(true);
 
     try {
       const pending = await submitNameRequest(nextProfile, nextBatch);
       setPendingRequestId(pending.requestId);
+      setPendingMeta({
+        requestId: pending.requestId,
+        batch: nextBatch,
+      });
       setStatus({
         provider: pending.provider,
         model: pending.model,
-        notice: pending.notice,
       });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "无法提交起名请求。");
       setIsGenerating(false);
+      setPendingMeta(null);
       setStatus(idleStatus);
     }
   };
 
   return (
     <main className="min-h-screen paper-grid">
-      <HeaderNav />
-      <div className="mx-auto grid max-w-[1560px] gap-4 px-5 py-4 xl:grid-cols-[390px_minmax(610px,1fr)_430px]">
+      <div className="workbench-shell">
         <ProfilePanel profile={profile} setProfile={setProfile} onClear={resetWorkbench} onGenerate={() => generate()} isGenerating={isGenerating} />
         <CandidatePanel
           names={names}
@@ -156,6 +227,7 @@ export function NameWorkbench() {
           isGenerating={isGenerating}
           status={status}
           error={error}
+          pendingMeta={pendingMeta}
         />
         <DetailPanel
           name={selectedName}
@@ -166,10 +238,6 @@ export function NameWorkbench() {
           toggleCompare={toggleCompare}
           isGenerating={isGenerating}
         />
-      </div>
-      <div className="mx-auto mb-5 max-w-[1560px] px-5 text-xs text-muted-foreground">
-        <Leaf className="mr-1 inline h-3.5 w-3.5" />
-        {status.notice}
       </div>
     </main>
   );

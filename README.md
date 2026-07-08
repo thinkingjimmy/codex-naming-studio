@@ -63,15 +63,15 @@ codex plugin add codex-naming-studio@personal
 | 阶段 | 用户做什么 | Codex 做什么 |
 | --- | --- | --- |
 | 安装 | 把安装提示词发给 Codex；完成后**新开一个对话** | 1. clone 仓库到 `~/plugins/codex-naming-studio` 2. `pnpm install` 3. `pnpm probe:mcp` 验证 MCP 状态工具 4. 确认 `.codex-plugin/plugin.json` 存在 5. 确认 `~/.agents/plugins/marketplace.json` 有插件条目（名字与路径必须与 plugin.json 一致）6. `codex plugin marketplace add ~` 7. `codex plugin add codex-naming-studio@personal` 8. 用 `codex plugin list` 校验状态为 `installed, enabled` 9. 提醒用户新开对话 |
-| 启动 | 在新对话中说"打开起名工作台" | 触发 `naming-studio-open`：后台运行 `NAMING_PROJECT_DIR=<用户工作区> node scripts/start-workbench.mjs`，在内置浏览器打开 `http://127.0.0.1:43318`，然后运行 `scripts/watch-naming-request.mjs` 阻塞等待请求。**禁止**索要任何 API key |
-| 生成 | 左栏填写宝宝信息，点击"生成好名"，等待右侧 loading 结束 | watcher 打印出 pending 请求后触发 `naming-studio-generate`：按 plan 先执行带 skill 的步骤（`naming-studio-bazi` 排盘、`naming-studio-research` 搜索），再按硬约束生成 8-12 个候选，调用 `save_naming_product_result` 回写，然后重新 arm watcher；失败也必须用 `result.error` 回写，绝不让 GUI 空转 |
+| 启动 | 在新对话中说"打开起名工作台" | 触发 `naming-studio-open`：后台运行 `NAMING_PROJECT_DIR=<用户工作区> node scripts/start-workbench.mjs`，脚本先健康复用同项目服务、必要时修复依赖并启动 Vite；在内置浏览器打开 `http://127.0.0.1:43318`，然后运行 `scripts/watch-naming-request.mjs` 阻塞等待请求。**禁止**索要任何 API key |
+| 生成 | 左栏填写宝宝信息，点击"生成好名"，等待右侧 loading 结束；连续点击时新请求自动取代旧 pending | watcher 打印出 latestPendingRequest 后触发 `naming-studio-generate`：按 plan 先执行带 skill 的步骤（`naming-studio-bazi` 排盘、`naming-studio-research` 搜索），再按硬约束生成 8-12 个候选，调用 `save_naming_product_result` 回写，然后重新 arm watcher；失败也必须用 `result.error` 回写，绝不让 GUI 空转 |
 
 ## 故障排查
 
 - **浏览器页面打不开或提示"本地工作台服务未运行"**：工作台服务器没在跑。在 Codex 对话中重新说"打开起名工作台"。
 - **Codex 说打开了但浏览器没出现**：插件可能未加载——用 `codex plugin list` 确认 `codex-naming-studio@personal` 为 `installed, enabled`，然后新开对话重试。
-- **点击生成后一直 loading**：Codex 侧 watcher 可能已超时退出。在对话里说"继续等待起名请求"或"处理待办的起名请求"，或检查 `<工作区>/.naming-product/state.json` 中该请求的 status。
-- **端口 43318 被占用**：用 `NAMING_WORKBENCH_PORT` 换端口重启启动器。
+- **点击生成后 loading 不结束**：Codex 侧 watcher 可能已超时退出。GUI 会立即显示已提交的批次与 request id，并在 2 分钟后停止前端 loading；再次点击生成会创建新 pending 并自动把旧 pending 标记为 `superseded`，在对话里说"继续等待起名请求"或"处理待办的起名请求"也可让 Codex 接管 latestPendingRequest。
+- **端口 43318 被占用**：启动器会区分同项目工作台、其他项目工作台与非工作台服务；同项目直接复用，其他情况用 `NAMING_WORKBENCH_PORT` 换端口重启。
 
 ## 使用
 
@@ -96,7 +96,7 @@ Codex 会启动本地工作台服务器并在内置浏览器打开 `http://127.0
 - `codex-naming-studio:naming-studio-research`：外部事实研究——搜索热门名字避让清单、审查普通话谐音。
 - `codex-naming-studio:naming-studio-bazi`：八字五行算法——节气排四柱、藏干加权统计五行、日主强弱三参、喜用神推导与用字五行判定。出生时间勾选项关闭时整个五行维度从计划、数据与 UI 中消失。
 
-GUI 的每个勾选与输入由 `src/lib/task-plan.js` 的规则表翻译为执行计划：带 skill 的步骤（如勾选"避开热门名字"触发 `naming-studio-research` 搜索）先执行，其余作为生成硬约束。计划由服务端在请求落盘时推导，写进 `.naming-product/state.json`，Codex 与浏览器看到同一份真相。
+GUI 的每个勾选、输入与风格强度由 `src/lib/task-plan.js` 的规则表翻译为执行计划：带 skill 的步骤（如勾选"避开热门名字"触发 `naming-studio-research` 搜索）先执行，其余作为生成硬约束。名字字数使用 `fullNameLength: 2 | 3` 表示完整姓名长度，消除历史 `single/double` 枚举歧义。风格强度的 0-100 数值由 `src/lib/tone-preferences.js` 统一映射为"关闭/较弱/中等/较强/强"，UI 与 plan 共用同一真相源。计划由服务端在请求落盘时推导，写进 `.naming-product/state.json`，Codex 与浏览器看到同一份真相。
 
 ## 本地开发
 
@@ -107,7 +107,7 @@ pnpm dev         # 启动工作台（默认 http://127.0.0.1:43318，状态写�
 pnpm quality     # 语法检查 + 构建 + 探针
 ```
 
-开发时没有 Codex 回写请求，可用 MCP client 或直接调 `save_naming_product_result` 模拟结果；GUI 每 1.6 秒轮询状态文件。
+开发时没有 Codex 回写请求，可用 MCP client 或直接调 `save_naming_product_result` 模拟结果；GUI 每 1.6 秒轮询结果状态，Codex watcher 默认每 300ms 监听新请求。
 
 ## Architecture
 
@@ -137,11 +137,17 @@ pnpm-workspace.yaml - pnpm 构建脚本白名单，允许 esbuild 完成 Vite �
 design-qa.md - 源截图与实现截图的设计 QA 门禁记录
 </config>
 
-架构决策: 单一形态——Codex 内置浏览器 + 本地状态服务器 + 文件状态闭环。`.naming-product/state.json` 是唯一真相源：浏览器 GUI 经 Vite middleware 读写它，Codex 经 MCP 状态工具读写它（候选统一走 normalizeCandidates），`scripts/watch-naming-request.mjs` 让 Codex 阻塞等待新请求。没有任何模型密钥；Codex 自身推理就是模型。
+架构决策: 单一形态——Codex 内置浏览器 + 本地状态服务器 + 文件状态闭环。`.naming-product/state.json` 是唯一真相源：浏览器 GUI 经 Vite middleware 读写它，Codex 经 MCP 状态工具读写它（候选统一走 normalizeCandidates），状态层维护 `latestPendingRequest` 并让旧 pending 进入 `superseded`，`scripts/watch-naming-request.mjs` 只阻塞等待最新请求。没有任何模型密钥；Codex 自身推理就是模型。
 
 开发规范: 新增或改变业务文件时先更新 L3 头部，再检查最近 README.md。
 
 变更日志:
+- 2026-07-08: Product Design 审阅后压实工作台——候选中栏改为扫描表，选中态从整块描边改为左侧状态条，右栏解析头部收敛，三栏共享面板阴影退场。
+- 2026-07-08: 优化工作台响应式布局——三栏断点提前到 1120px，中间 gutter 归零，候选行与对比卡片压实，宽屏不再误掉单列。
+- 2026-07-08: 修复连续生成无响应感——状态层新增单一活跃 pending 与 superseded 退场规则，watcher 只消费 latestPendingRequest，GUI 显示已提交批次与 request id，探针覆盖旧请求防回写。
+- 2026-07-08: 收敛产品界面——移除顶部 Header 组件与底部状态描述，工作台首屏直接进入三栏操作区。
+- 2026-07-08: 修复名字字数坏味道——内部语义从 `nameLength: single/double` 迁移为 `fullNameLength: 2/3`；GUI pending 超过 2 分钟会退出 loading 并提示重新接管。
+- 2026-07-08: 复盘启动与生成链路——启动器新增同项目健康复用、坏依赖树检测与 hoisted 修复；watcher 默认 300ms 响应；profile 保存/回写统一归一化；GUI 支持 latestResult 复水；风格强度 UI 与 plan 改为同一数值映射。
 - 2026-07-08: 重构为 Cowart 式浏览器单形态——native widget 与 OpenAI llm-bridge 整体退役，状态 API 内嵌 Vite middleware，新增 start-workbench 启动器与 watch-naming-request 监听器，naming-state 成为 MCP 与 middleware 共享的状态单一真相源，全程零 key。
 - 2026-07-08: 新增职责协议表与故障排查——安装/启动/生成三阶段的用户与 Codex 分工，覆盖 fallback 提示误导、widget 未加载、首次构建等待与 loading 卡死四类常见问题。
 - 2026-07-08: 出生时间改为勾选项（useBazi），关闭时五行维度从计划/数据/UI 全链路消失；五行算法升级为 naming-studio-bazi skill（节气排盘、藏干加权、喜用神推导），探针新增路由断言。

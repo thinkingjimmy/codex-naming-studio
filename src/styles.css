@@ -1,7 +1,7 @@
 /**
  * - [INPUT]: 依赖 tailwind.config.js 的 content 扫描与 shadcn 语义 token。
- * - [OUTPUT]: 提供全局 Tailwind 层、CSS 变量、滑块、焦点样式与原生日期时间选择器图标遮罩。
- * - [POS]: src 的视觉地基，被所有组件消费，避免局部重复定义颜色与交互。
+ * - [OUTPUT]: 提供全局 Tailwind 层、CSS 变量、工作台响应式壳子、共享面板骨架、滑块、焦点样式与原生日期时间选择器图标遮罩。
+ * - [POS]: src 的视觉地基，被所有组件消费，统一页面背景、三栏断点、面板接缝与交互基线。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 @tailwind base;
@@ -77,4 +77,54 @@ input[type="range"] {
     linear-gradient(rgba(122, 99, 55, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(122, 99, 55, 0.03) 1px, transparent 1px);
   background-size: 28px 28px;
+}
+
+.workbench-shell {
+  display: grid;
+  width: min(100%, 1880px);
+  margin: 0 auto;
+  padding: 0.5rem;
+  row-gap: 0.75rem;
+  column-gap: 0;
+}
+
+.workbench-shell > * {
+  min-width: 0;
+}
+
+@media (min-width: 1120px) {
+  .workbench-shell {
+    grid-template-columns: minmax(286px, 330px) minmax(520px, 1fr) minmax(286px, 350px);
+    align-items: start;
+    row-gap: 0;
+  }
+
+  .workbench-shell > * + * {
+    margin-left: -1px;
+  }
+
+  .workbench-shell > section,
+  .workbench-shell > div > section {
+    box-shadow: none;
+  }
+
+  .workbench-shell > section:first-child {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .workbench-shell > section:nth-child(2) {
+    border-radius: 0;
+  }
+
+  .workbench-shell > div > section {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+}
+
+@media (min-width: 1440px) {
+  .workbench-shell {
+    grid-template-columns: clamp(340px, 22vw, 410px) minmax(640px, 1fr) clamp(390px, 26vw, 500px);
+  }
 }

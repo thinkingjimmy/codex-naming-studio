@@ -1,7 +1,7 @@
 /**
  * - [INPUT]: 依赖 @phosphor-icons/react 解析/对比图标、候选名详情数据、METRIC_LABELS 指标、Tabs/Card/Button 与 workbench/common 展示工具。
- * - [OUTPUT]: 对外提供 DetailPanel 名字解析与对比面板。
- * - [POS]: components/workbench 的右栏解释面板，负责空白/loading、详情 tabs 与对比卡片。
+ * - [OUTPUT]: 对外提供 DetailPanel 当前名字解析与对比面板。
+ * - [POS]: components/workbench 的右栏解释面板，负责空白/loading、当前名字详情 tabs 与对比卡片。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import * as React from "react";
@@ -115,17 +115,17 @@ function ComparePanel({ names, comparedIds, selectedId, toggleCompare }) {
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">对比名字（最多 3 个）</CardTitle>
+      <CardHeader className="!p-3 !pb-2">
+        <CardTitle className="!text-base">对比名字（最多 3 个）</CardTitle>
         <Button type="button" size="sm" variant="ghost" onClick={() => compared.forEach((name) => toggleCompare(name.id))}>
           <ArrowClockwise className="h-4 w-4" />
           清空
         </Button>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-4 gap-3">
+      <CardContent className="space-y-3 !p-3 !pt-2">
+        <div className="grid grid-cols-3 gap-2">
           {compared.map((name) => (
-            <button key={name.id} type="button" onClick={() => toggleCompare(name.id)} className="relative rounded-md border border-primary bg-primary/5 p-2.5 text-center">
+            <button key={name.id} type="button" onClick={() => toggleCompare(name.id)} className="relative rounded-md border border-primary bg-primary/5 p-2 text-center">
               <X className="absolute right-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
               <p className="font-serif text-lg font-semibold">{name.fullName}</p>
               <p className="mt-1 text-xs text-amber-700">{name.score}分</p>
@@ -183,15 +183,17 @@ export function DetailPanel({ name, names, favorite, comparedIds, toggleFavorite
   const activeTab = availableTabs.some(([id]) => id === tab) ? tab : availableTabs[0][0];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <Card className="overflow-hidden">
-        <CardHeader className="pb-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <CardTitle>名字解析</CardTitle>
-            <span className="font-serif text-3xl font-semibold">{name.fullName}</span>
-            <span className="font-serif text-2xl text-amber-600">{name.score}分</span>
+        <CardHeader className="items-start !p-3 !pb-2">
+          <div className="min-w-0">
+            <CardTitle className="!text-base">名字解析</CardTitle>
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="font-serif text-[2rem] font-semibold leading-none">{name.fullName}</span>
+              <span className="font-serif text-2xl leading-none text-amber-600">{name.score}分</span>
+            </div>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => toggleFavorite(name.id)}>
+          <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => toggleFavorite(name.id)}>
             <Star weight={favorite ? "fill" : "regular"} className={cn("h-4 w-4", favorite && "text-amber-500")} />
             {favorite ? "已收藏" : "收藏"}
           </Button>

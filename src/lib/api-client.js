@@ -33,7 +33,6 @@ export async function submitNameRequest(profile, batch) {
     requestId,
     provider: "pending-codex",
     model: "Codex",
-    notice: "请求已写入工作台状态，等待 Codex 测算回写。",
   };
 }
 

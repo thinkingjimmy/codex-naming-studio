@@ -1,6 +1,12 @@
 **Findings**
 - No actionable P0/P1/P2 issues remain.
 
+**2026-07-08 Product Design Review**
+- Scope: current Codex Naming Studio workbench screen at `http://127.0.0.1:43319/`, reviewed from the user-provided screenshot and in-app browser state.
+- UX risks found: three attached panels still read like separate cards because shadows competed at the seams; candidate selected state used a full row outline that fought the table grid; candidate toolbar wrapped and made the header taller than the task needed; detail header competed with the selected candidate instead of calmly explaining it.
+- Accessibility risks visible from screenshot: repeated dense table labels could wrap unpredictably at the threshold; selected row relied too much on a full green border and light green fill, so the state marker needed a more localized shape cue.
+- Optimization applied: shared workbench shadows removed on desktop, candidate panel changed to a shorter scan table, selected row changed to a left state rail, toolbar controls compacted into one row, and the right detail header was reduced to a clearer current-name hierarchy.
+
 **Open Questions**
 - Source visual shows 24 names while the bridge returns 12 candidates by default. This is intentional for the LLM protocol: the backend schema asks for 8-12 candidates per batch, and pagination still supports additional batches.
 - The logo mark uses a Phosphor sun icon rather than the exact raster logo from the screenshot. It preserves the product signal without copying a private asset.

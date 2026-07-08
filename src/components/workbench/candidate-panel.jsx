@@ -1,7 +1,7 @@
 /**
- * - [INPUT]: 依赖 @phosphor-icons/react 操作图标、候选名数据、收藏/对比状态、sortCandidates 排序规则与 workbench/common 展示工具。
- * - [OUTPUT]: 对外提供 CandidatePanel 推荐名字列表面板。
- * - [POS]: components/workbench 的中栏结果面板，负责空白/loading/列表/分页四种视觉状态。
+ * - [INPUT]: 依赖 @phosphor-icons/react 操作图标、候选名数据、pending 元信息、收藏/对比状态、sortCandidates 排序规则与 workbench/common 展示工具。
+ * - [OUTPUT]: 对外提供 CandidatePanel 推荐名字扫描表面板。
+ * - [POS]: components/workbench 的中栏结果面板，负责空白/loading/等待接管/扫描表/分页五种视觉状态。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import * as React from "react";
@@ -14,17 +14,20 @@ import { sortCandidates } from "@/lib/name-engine.js";
 import { cn } from "@/lib/utils.js";
 import { ElementPill, providerLabel } from "./common.jsx";
 
+const candidateGridClass = "grid-cols-[28px_minmax(86px,1fr)_56px_58px_minmax(132px,1.4fr)_58px_24px]";
+
 function NameRow({ name, selected, favorite, compared, onSelect, onFavorite, onCompare }) {
   return (
     <button
       type="button"
       onClick={onSelect}
       className={cn(
-        "grid w-full grid-cols-[34px_minmax(110px,1fr)_72px_96px_minmax(145px,1.3fr)_72px_38px] items-center gap-3 border-b border-border/70 px-4 py-3 text-left transition-colors hover:bg-secondary/45",
-        selected && "rounded-md border border-primary bg-primary/5 shadow-inset",
+        "grid min-h-[82px] w-full items-center gap-2 border-b border-l-4 border-border/70 border-l-transparent px-3 py-2 text-left transition-colors hover:bg-secondary/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
+        candidateGridClass,
+        selected && "border-l-primary bg-primary/5 shadow-inset",
       )}
     >
-      <span className="flex items-center gap-2">
+      <span className="flex items-center">
         <span
           role="checkbox"
           aria-checked={compared}
@@ -32,23 +35,15 @@ function NameRow({ name, selected, favorite, compared, onSelect, onFavorite, onC
             event.stopPropagation();
             onCompare();
           }}
-          className={cn("grid h-5 w-5 place-items-center rounded border border-border bg-white", compared && "border-primary bg-primary text-primary-foreground")}
+          className={cn("grid h-4 w-4 place-items-center rounded border border-border bg-white", compared && "border-primary bg-primary text-primary-foreground")}
         >
-          {compared ? <Check className="h-3.5 w-3.5" /> : null}
+          {compared ? <Check className="h-3 w-3" /> : null}
         </span>
-        <Star
-          weight={favorite ? "fill" : "regular"}
-          onClick={(event) => {
-            event.stopPropagation();
-            onFavorite();
-          }}
-          className={cn("h-5 w-5 text-muted-foreground", favorite && "text-amber-500")}
-        />
       </span>
-      <span className="font-serif text-[2rem] font-semibold leading-none text-stone-800">{name.fullName}</span>
+      <span className="font-serif text-[1.6rem] font-semibold leading-none text-stone-800">{name.fullName}</span>
       <span>
-        <b className="font-serif text-3xl font-semibold text-amber-600">{name.score}</b>
-        <em className="block text-sm not-italic text-stone-700">{name.grade}</em>
+        <b className="font-serif text-[1.45rem] font-semibold leading-none text-amber-600">{name.score}</b>
+        <em className="block text-xs not-italic text-stone-700">{name.grade}</em>
       </span>
       <span className="space-y-1">
         {name.elements.length > 0 ? (
@@ -60,9 +55,16 @@ function NameRow({ name, selected, favorite, compared, onSelect, onFavorite, onC
           <span className="block text-xs text-muted-foreground">未测五行</span>
         )}
       </span>
-      <span className="text-sm leading-7 text-stone-700">{name.summary}</span>
-      <Badge className={name.risk === "风险中" ? "bg-amber-100 text-amber-700" : ""}>{name.risk}</Badge>
-      <Star weight={favorite ? "fill" : "regular"} className={cn("h-5 w-5 justify-self-center text-muted-foreground", favorite && "text-amber-500")} />
+      <span className="text-sm leading-5 text-stone-700">{name.summary}</span>
+      <Badge className={cn("justify-self-start whitespace-nowrap px-1.5", name.risk === "风险中" ? "bg-amber-100 text-amber-700" : "")}>{name.risk}</Badge>
+      <Star
+        weight={favorite ? "fill" : "regular"}
+        onClick={(event) => {
+          event.stopPropagation();
+          onFavorite();
+        }}
+        className={cn("h-[18px] w-[18px] justify-self-center text-muted-foreground", favorite && "text-amber-500")}
+      />
     </button>
   );
 }
@@ -85,7 +87,7 @@ function CandidateEmptyState({ isGenerating }) {
   );
 }
 
-export function CandidatePanel({ names, selectedId, favorites, comparedIds, setSelectedId, toggleFavorite, toggleCompare, onRefresh, isGenerating, status, error }) {
+export function CandidatePanel({ names, selectedId, favorites, comparedIds, setSelectedId, toggleFavorite, toggleCompare, onRefresh, isGenerating, status, error, pendingMeta }) {
   const [sortMode, setSortMode] = React.useState("score");
   const [filterMode, setFilterMode] = React.useState("all");
   const [page, setPage] = React.useState(1);
@@ -103,30 +105,35 @@ export function CandidatePanel({ names, selectedId, favorites, comparedIds, setS
 
   return (
     <Card className="overflow-hidden">
-      <CardHeader className="items-start pb-3">
+      <CardHeader className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b border-border/70 !p-3">
         <div>
-          <CardTitle>为您推荐的名字</CardTitle>
-          <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <CardTitle className="!text-[1.05rem]">为您推荐的名字</CardTitle>
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>{names.length > 0 ? `共 ${names.length} 个好名` : "尚未生成"}</span>
             <Badge variant={status.provider === "codex" ? "default" : "gold"}>{providerLabel(status.provider)}</Badge>
             <span>{status.model}</span>
           </p>
+          {pendingMeta && status.provider === "pending-codex" ? (
+            <p className="mt-2 break-all text-xs text-muted-foreground">
+              已提交第 {pendingMeta.batch} 批：{pendingMeta.requestId}
+            </p>
+          ) : null}
           {error ? <p className="mt-2 text-xs text-red-700">{error}</p> : null}
         </div>
-        <div className="flex flex-wrap justify-end gap-2">
-          <Select value={sortMode} onChange={(event) => setSortMode(event.target.value)}>
+        <div className="grid grid-cols-[7.25rem_6.25rem_5.5rem] gap-2">
+          <Select className="!h-8 !w-[7.25rem] !px-2" value={sortMode} onChange={(event) => setSortMode(event.target.value)}>
             <option value="score">综合推荐</option>
             <option value="style">风格匹配</option>
             <option value="risk">风险优先</option>
           </Select>
-          <Select value={filterMode} onChange={(event) => setFilterMode(event.target.value)}>
+          <Select className="!h-8 !w-[6.25rem] !px-2" value={filterMode} onChange={(event) => setFilterMode(event.target.value)}>
             <option value="all">筛选</option>
             <option value="high">90 分以上</option>
             <option value="safe">低风险</option>
           </Select>
-          <Button type="button" variant="outline" onClick={onRefresh} disabled={isGenerating || names.length === 0}>
+          <Button type="button" variant="outline" size="sm" className="!px-2.5" onClick={onRefresh} disabled={isGenerating || names.length === 0}>
             <ArrowClockwise className={cn("h-4 w-4", isGenerating && "animate-spin")} />
-            {isGenerating ? "生成中" : "换一批"}
+            {isGenerating ? "生成中" : "换批"}
           </Button>
         </div>
       </CardHeader>
@@ -134,14 +141,14 @@ export function CandidatePanel({ names, selectedId, favorites, comparedIds, setS
         <CandidateEmptyState isGenerating={isGenerating} />
       ) : (
         <>
-          <div className="hidden grid-cols-[34px_minmax(110px,1fr)_72px_96px_minmax(145px,1.3fr)_72px_38px] gap-3 border-y border-border bg-secondary/35 px-4 py-3 text-sm font-medium text-stone-700 lg:grid">
-            <span>推荐</span>
+          <div className={cn("hidden gap-2 border-b border-border bg-secondary/35 px-3 py-2 text-xs font-medium text-stone-700 lg:grid", candidateGridClass)}>
+            <span>对比</span>
             <span>姓名</span>
-            <span>综合评分</span>
-            <span>五行补益</span>
-            <span>寓意摘要</span>
-            <span>谐音风险</span>
-            <span>收藏</span>
+            <span>评分</span>
+            <span>五行</span>
+            <span>寓意</span>
+            <span>风险</span>
+            <span>藏</span>
           </div>
           <div>
             {visible.map((name) => (
@@ -157,7 +164,7 @@ export function CandidatePanel({ names, selectedId, favorites, comparedIds, setS
               />
             ))}
           </div>
-          <div className="flex items-center justify-center gap-4 px-5 py-3 text-sm text-muted-foreground">
+          <div className="flex items-center justify-center gap-3 px-5 py-2.5 text-sm text-muted-foreground">
             <Button type="button" size="icon" variant="ghost" disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
               <CaretLeft className="h-4 w-4" />
             </Button>
@@ -176,7 +183,7 @@ export function CandidatePanel({ names, selectedId, favorites, comparedIds, setS
             </Button>
             <span>共 {totalPages} 页</span>
           </div>
-          <p className="border-t border-border px-5 py-2.5 text-center text-sm text-muted-foreground">
+          <p className="border-t border-border px-5 py-2 text-center text-xs text-muted-foreground">
             小贴士：点击名字可查看详细解析，点击 <Star className="mx-1 inline h-4 w-4" /> 可加入对比
           </p>
         </>

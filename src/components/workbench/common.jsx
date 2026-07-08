@@ -1,10 +1,11 @@
 /**
- * - [INPUT]: 依赖 Label 与 cn，承载工作台跨面板共享的选项、样式与小型控件。
+ * - [INPUT]: 依赖 Label、cn 与 tone-preferences 强度映射，承载工作台跨面板共享的选项、样式与小型控件。
  * - [OUTPUT]: 对外提供 genderOptions、tabItems、elementStyles、ElementPill、Field、Segment、SliderRow、FilterCheck、providerLabel。
  * - [POS]: components/workbench 的共享底座，被 profile/candidate/detail 面板消费。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import { Label } from "@/components/ui/label.jsx";
+import { toneStrengthLabel } from "@/lib/tone-preferences.js";
 import { cn } from "@/lib/utils.js";
 
 export const genderOptions = [
@@ -70,12 +71,12 @@ export function ElementPill({ value }) {
   );
 }
 
-export function SliderRow({ label, value, suffix, onChange }) {
+export function SliderRow({ label, value, onChange }) {
   return (
     <div className="grid grid-cols-[72px_1fr_42px] items-center gap-3 text-sm">
       <span className="text-foreground">{label}</span>
       <input min="0" max="100" value={value} onChange={(event) => onChange(Number(event.target.value))} type="range" />
-      <span className="text-right text-xs text-muted-foreground">{suffix}</span>
+      <span className="text-right text-xs text-muted-foreground">{toneStrengthLabel(value)}</span>
     </div>
   );
 }
