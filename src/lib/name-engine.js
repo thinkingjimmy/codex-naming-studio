@@ -14,12 +14,13 @@ export const DEFAULT_PROFILE = {
   fullNameLength: 3,
   preferredChars: "",
   blockedChars: "",
+  // 强度取 0/25/50/75/100 五档，与 GUI 步进滑轨的档位一一对应。
   tones: {
-    classic: 78,
-    gentle: 88,
-    bright: 62,
-    poetic: 88,
-    modern: 64,
+    classic: 75,
+    gentle: 100,
+    bright: 50,
+    poetic: 100,
+    modern: 50,
   },
   filters: {
     rare: true,

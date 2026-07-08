@@ -1,15 +1,39 @@
 /**
- * - [INPUT]: 依赖 react 状态钩子、api-client 状态协议、name-engine 默认/合并/归一化 profile 能力、styles.css 工作台壳子与面板组件。
- * - [OUTPUT]: 对外提供 NameWorkbench 零缝隙三栏起名产品组件。
- * - [POS]: components 的产品状态机，协调左栏输入、中栏候选、右栏解析、latestResult 复水、pending 元信息、超时降级与响应式工作台布局。
+ * - [INPUT]: 依赖 react 状态钩子、api-client 状态协议、name-engine 默认/合并/归一化 profile 能力、styles.css 全高工作台壳子、workbench/common 的 providerLabel 与面板组件。
+ * - [OUTPUT]: 对外提供 NameWorkbench 顶栏 + 三栏全高起名产品组件。
+ * - [POS]: components 的产品状态机，协调顶栏状态、左栏输入、中栏候选、右栏解析、latestResult 复水、pending 元信息、超时降级与响应式工作台布局。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import * as React from "react";
 import { loadNameState, submitNameRequest } from "@/lib/api-client.js";
 import { DEFAULT_PROFILE, mergeProfile, normalizeProfile } from "@/lib/name-engine.js";
 import { CandidatePanel } from "./workbench/candidate-panel.jsx";
+import { providerLabel } from "./workbench/common.jsx";
 import { DetailPanel } from "./workbench/detail-panel.jsx";
 import { ProfilePanel } from "./workbench/profile-panel.jsx";
+
+function WorkbenchHeader({ status, isGenerating }) {
+  const dotClass =
+    status.provider === "codex"
+      ? "bg-emerald-500"
+      : status.provider === "pending-codex"
+        ? "bg-amber-500 animate-pulse"
+        : "bg-zinc-300";
+  return (
+    <header className="flex h-12 flex-none items-center justify-between border-b border-border bg-card px-4">
+      <div className="flex items-center gap-2.5">
+        <span className="grid h-6 w-6 place-items-center rounded-md bg-primary font-serif text-sm font-semibold text-primary-foreground">名</span>
+        <span className="text-sm font-semibold tracking-tight">起名工作台</span>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
+        <span>{isGenerating ? "Codex 测算中" : providerLabel(status.provider)}</span>
+        <span className="text-border">/</span>
+        <span className="font-mono">{status.model}</span>
+      </div>
+    </header>
+  );
+}
 
 const idleStatus = {
   provider: "idle",
@@ -32,7 +56,6 @@ export function NameWorkbench() {
   const [names, setNames] = React.useState([]);
   const [selectedId, setSelectedId] = React.useState("");
   const [favorites, setFavorites] = React.useState(() => new Set());
-  const [comparedIds, setComparedIds] = React.useState([]);
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [pendingRequestId, setPendingRequestId] = React.useState("");
   const [pendingMeta, setPendingMeta] = React.useState(null);
@@ -42,7 +65,6 @@ export function NameWorkbench() {
   const applyNames = React.useCallback((nextNames, nextStatus) => {
     setNames(nextNames);
     setSelectedId(nextNames[0]?.id || "");
-    setComparedIds(nextNames.slice(0, 3).map((name) => name.id));
     setFavorites((current) => new Set([...current].filter((id) => nextNames.some((name) => name.id === id))));
     setStatus(nextStatus);
   }, []);
@@ -60,7 +82,6 @@ export function NameWorkbench() {
           setBatch(pending.batch || 0);
           setNames([]);
           setSelectedId("");
-          setComparedIds([]);
           setPendingRequestId(pending.id);
           setPendingMeta({
             requestId: pending.id,
@@ -162,11 +183,6 @@ export function NameWorkbench() {
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
-  const toggleCompare = (id) =>
-    setComparedIds((current) => {
-      if (current.includes(id)) return current.filter((item) => item !== id);
-      return [...current.slice(-2), id];
-    });
 
   const resetWorkbench = () => {
     setProfile(DEFAULT_PROFILE);
@@ -174,7 +190,6 @@ export function NameWorkbench() {
     setNames([]);
     setSelectedId("");
     setFavorites(new Set());
-    setComparedIds([]);
     setPendingRequestId("");
     setPendingMeta(null);
     setIsGenerating(false);
@@ -187,7 +202,6 @@ export function NameWorkbench() {
     setError("");
     setNames([]);
     setSelectedId("");
-    setComparedIds([]);
     setPendingRequestId("");
     setPendingMeta(null);
     setIsGenerating(true);
@@ -212,17 +226,16 @@ export function NameWorkbench() {
   };
 
   return (
-    <main className="min-h-screen paper-grid">
-      <div className="workbench-shell">
+    <main className="workbench-app">
+      <WorkbenchHeader status={status} isGenerating={isGenerating} />
+      <div className="workbench-columns">
         <ProfilePanel profile={profile} setProfile={setProfile} onClear={resetWorkbench} onGenerate={() => generate()} isGenerating={isGenerating} />
         <CandidatePanel
           names={names}
           selectedId={selectedId}
           favorites={favorites}
-          comparedIds={comparedIds}
           setSelectedId={setSelectedId}
           toggleFavorite={toggleFavorite}
-          toggleCompare={toggleCompare}
           onRefresh={() => generate()}
           isGenerating={isGenerating}
           status={status}
@@ -231,11 +244,8 @@ export function NameWorkbench() {
         />
         <DetailPanel
           name={selectedName}
-          names={names}
           favorite={selectedName ? favorites.has(selectedName.id) : false}
-          comparedIds={comparedIds}
           toggleFavorite={toggleFavorite}
-          toggleCompare={toggleCompare}
           isGenerating={isGenerating}
         />
       </div>

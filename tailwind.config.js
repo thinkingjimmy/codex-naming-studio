@@ -43,8 +43,8 @@ export default {
         serif: ["Noto Serif SC", "Songti SC", "STSong", "serif"],
       },
       boxShadow: {
-        paper: "0 18px 48px -34px rgba(86, 70, 39, 0.38)",
-        inset: "inset 0 1px 0 rgba(255, 255, 255, 0.72)",
+        paper: "0 1px 2px 0 rgba(0, 0, 0, 0.04)",
+        inset: "inset 0 1px 0 rgba(255, 255, 255, 0.08)",
       },
       borderRadius: {
         lg: "var(--radius)",

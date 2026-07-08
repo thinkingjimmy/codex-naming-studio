@@ -1,36 +1,43 @@
 /**
- * - [INPUT]: 依赖 @phosphor-icons/react 解析/对比图标、候选名详情数据、METRIC_LABELS 指标、Tabs/Card/Button 与 workbench/common 展示工具。
- * - [OUTPUT]: 对外提供 DetailPanel 当前名字解析与对比面板。
- * - [POS]: components/workbench 的右栏解释面板，负责空白/loading、当前名字详情 tabs 与对比卡片。
+ * - [INPUT]: 依赖 @phosphor-icons/react 解析图标、候选名详情数据、METRIC_LABELS 指标、Button 与 workbench/common 展示工具。
+ * - [OUTPUT]: 对外提供 DetailPanel 当前名字解析面板（全高列布局，评分构成 + 八字 + 各维度解析纵向铺开）。
+ * - [POS]: components/workbench 的右栏解释面板，负责空白/loading 与当前名字全维度详情。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import * as React from "react";
-import { ArrowClockwise, FileText, Plus, Star, X } from "@phosphor-icons/react";
+import { FileText, Star } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button.jsx";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.jsx";
-import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.jsx";
 import { METRIC_LABELS } from "@/lib/name-engine.js";
 import { cn } from "@/lib/utils.js";
-import { ElementPill, elementStyles, tabItems } from "./common.jsx";
+import { ElementPill, elementStyles } from "./common.jsx";
+
+function Section({ title, children }) {
+  return (
+    <div className="space-y-2 border-t border-border/70 px-4 py-3.5">
+      <h3 className="text-[13px] font-semibold tracking-tight">{title}</h3>
+      {children}
+    </div>
+  );
+}
 
 function Distribution({ name }) {
   return (
-    <div className="grid gap-4 rounded-md border border-border bg-white/58 p-3 md:grid-cols-[1fr_1fr]">
+    <div className="grid gap-4 rounded-lg border border-border bg-background p-3 md:grid-cols-[1fr_1fr]">
       <div>
-        <p className="mb-3 text-sm font-medium">五行分布（喜用：{name.complement}）</p>
-        <div className="flex items-end gap-6">
+        <p className="mb-2.5 text-[13px] font-medium">五行分布（喜用：{name.complement}）</p>
+        <div className="flex items-end gap-5">
           {name.distribution.map(([element, count]) => (
-            <div key={element} className="space-y-2 text-center">
-              <span className={cn("block font-serif text-xl font-semibold", elementStyles[element])}>{element}</span>
-              <span className="block text-sm text-stone-700">{count}</span>
+            <div key={element} className="space-y-1.5 text-center">
+              <span className={cn("grid h-7 w-7 place-items-center rounded-md font-serif text-sm font-semibold", elementStyles[element])}>{element}</span>
+              <span className="block text-xs tabular-nums text-muted-foreground">{count}</span>
             </div>
           ))}
         </div>
       </div>
-      <div className="border-border md:border-l md:pl-5">
-        <p className="mb-3 text-sm font-medium">五行补益</p>
-        <div className="mb-3 flex gap-2">{name.elements.map((item) => <ElementPill key={item} value={item} />)}</div>
-        <p className="text-sm leading-6 text-stone-700">此名补益 {name.complement}，与命局喜用相合，有助平衡。</p>
+      <div className="border-border md:border-l md:pl-4">
+        <p className="mb-2.5 text-[13px] font-medium">五行补益</p>
+        <div className="mb-2 flex gap-1.5">{name.elements.map((item) => <ElementPill key={item} value={item} />)}</div>
+        <p className="text-[13px] leading-5 text-muted-foreground">此名补益 {name.complement}，与命局喜用相合，有助平衡。</p>
       </div>
     </div>
   );
@@ -38,12 +45,12 @@ function Distribution({ name }) {
 
 function BranchGrid({ name }) {
   return (
-    <div className="grid grid-cols-2 gap-y-4 rounded-md border border-border bg-white/58 p-3 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-y-3 rounded-lg border border-border bg-background p-3 sm:grid-cols-4">
       {name.branches.map(([label, stem, elements]) => (
         <div key={label} className="border-border text-center sm:border-r sm:last:border-r-0">
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="mt-2 font-serif text-xl font-semibold">{stem}</p>
-          <p className="mt-2 flex justify-center gap-2">
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <p className="mt-1.5 font-serif text-lg font-semibold">{stem}</p>
+          <p className="mt-1.5 flex justify-center gap-1.5 text-sm">
             {elements.map((item) => (
               <span key={item} className={cn("font-semibold", elementStyles[item])}>{item}</span>
             ))}
@@ -56,18 +63,18 @@ function BranchGrid({ name }) {
 
 function MetricBars({ name }) {
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-2">
       {METRIC_LABELS.map(([label, key], index) => {
         const max = [25, 20, 15, 20, 10, 10][index];
         const value = name.metrics[index];
         if (value == null) return null;
         return (
-          <div key={key} className="grid grid-cols-[74px_1fr_48px] items-center gap-3 text-sm">
-            <span>{label}</span>
-            <span className="h-2 overflow-hidden rounded-full bg-secondary">
-              <span className="block h-full rounded-full bg-primary" style={{ width: `${(value / max) * 100}%` }} />
+          <div key={key} className="grid grid-cols-[64px_1fr_44px] items-center gap-2.5 text-[13px]">
+            <span className="text-muted-foreground">{label}</span>
+            <span className="h-1.5 overflow-hidden rounded-full bg-secondary">
+              <span className="block h-full rounded-full bg-foreground/80" style={{ width: `${(value / max) * 100}%` }} />
             </span>
-            <span className="text-right text-xs text-stone-700">
+            <span className="text-right text-xs tabular-nums text-muted-foreground">
               {value}/{max}
             </span>
           </div>
@@ -77,141 +84,78 @@ function MetricBars({ name }) {
   );
 }
 
-function DetailContent({ tab, name }) {
-  if (tab === "bazi") {
-    return (
-      <div className="space-y-4">
-        <Distribution name={name} />
-        <div>
-          <p className="mb-2 text-sm font-medium">八字命盘</p>
-          <BranchGrid name={name} />
-        </div>
-        <div>
-          <p className="mb-2 text-sm font-medium">命理简析</p>
-          <p className="text-sm leading-6 text-stone-700">{name.analysis}</p>
-        </div>
-      </div>
-    );
-  }
-
-  const copy = {
-    sound: `“${name.fullName}”声母开合有序，尾音清亮，读来不拗口，适合日常高频呼唤。`,
-    shape: "字形左右疏密均衡，笔画不过重，签名与屏幕显示都有较好识别度。",
-    meaning: name.summary,
-    source: name.poems,
-    avoid: `${name.risk}。未命中常见谐音、生肖冲突与负面联想，建议继续结合家族避讳复核。`,
-  };
-
-  return (
-    <div className="rounded-md border border-border bg-white/58 p-3">
-      <p className="text-sm leading-6 text-stone-700">{copy[tab]}</p>
-    </div>
-  );
-}
-
-function ComparePanel({ names, comparedIds, selectedId, toggleCompare }) {
-  const compared = comparedIds.map((id) => names.find((name) => name.id === id)).filter(Boolean);
-  const fallback = names.find((name) => !comparedIds.includes(name.id) && name.id !== selectedId);
-
-  return (
-    <Card>
-      <CardHeader className="!p-3 !pb-2">
-        <CardTitle className="!text-base">对比名字（最多 3 个）</CardTitle>
-        <Button type="button" size="sm" variant="ghost" onClick={() => compared.forEach((name) => toggleCompare(name.id))}>
-          <ArrowClockwise className="h-4 w-4" />
-          清空
-        </Button>
-      </CardHeader>
-      <CardContent className="space-y-3 !p-3 !pt-2">
-        <div className="grid grid-cols-3 gap-2">
-          {compared.map((name) => (
-            <button key={name.id} type="button" onClick={() => toggleCompare(name.id)} className="relative rounded-md border border-primary bg-primary/5 p-2 text-center">
-              <X className="absolute right-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
-              <p className="font-serif text-lg font-semibold">{name.fullName}</p>
-              <p className="mt-1 text-xs text-amber-700">{name.score}分</p>
-              <p className="mt-2 flex justify-center gap-1">{name.elements.map((item) => <ElementPill key={item} value={item} />)}</p>
-            </button>
-          ))}
-          {compared.length < 3 && fallback ? (
-            <button type="button" onClick={() => toggleCompare(fallback.id)} className="grid min-h-[92px] place-items-center rounded-md border border-dashed border-border bg-white/50 text-sm text-stone-700">
-              <span className="flex items-center gap-2">
-                <Plus className="h-4 w-4" />
-                添加对比
-              </span>
-            </button>
-          ) : null}
-        </div>
-        <MetricBars name={compared[0] || names[0]} />
-        <Button type="button" variant="outline" className="w-full">
-          <FileText className="h-4 w-4" />
-          查看完整解析报告
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
 function DetailEmptyState({ isGenerating }) {
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardContent className="grid min-h-[360px] place-items-center p-8 text-center">
-          <div className="max-w-[300px] space-y-4">
-            <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-emerald-100 text-primary">
-              <FileText weight="duotone" className={cn("h-7 w-7", isGenerating && "animate-pulse")} />
-            </div>
-            <div>
-              <p className="font-serif text-2xl font-semibold text-stone-800">{isGenerating ? "解析正在生成" : "解析区等待结果"}</p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                {isGenerating ? "Codex 会把名字、评分与命理分析写回这里。" : "生成完成后，这里会展示名字详情、五行分布、出处典故和对比卡片。"}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+    <section className="grid bg-card place-items-center px-6 py-16 text-center">
+      <div className="max-w-[280px] space-y-3">
+        <div className="mx-auto grid h-11 w-11 place-items-center rounded-lg border border-border bg-card text-muted-foreground shadow-paper">
+          <FileText weight="duotone" className={cn("h-5 w-5", isGenerating && "animate-pulse text-foreground")} />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-foreground">{isGenerating ? "解析正在生成" : "解析区等待结果"}</p>
+          <p className="mt-1.5 text-[13px] leading-5 text-muted-foreground">
+            {isGenerating ? "Codex 会把名字、评分与命理分析写回这里。" : "生成完成后，这里会展示名字详情、评分构成、五行分布与各维度解析。"}
+          </p>
+        </div>
+      </div>
+    </section>
   );
 }
 
-export function DetailPanel({ name, names, favorite, comparedIds, toggleFavorite, toggleCompare, isGenerating }) {
-  const [tab, setTab] = React.useState("bazi");
-
+export function DetailPanel({ name, favorite, toggleFavorite, isGenerating }) {
   if (!name) return <DetailEmptyState isGenerating={isGenerating} />;
 
-  // 八字 tab 随数据可用性出现：未测五行的候选没有命盘可展示。
-  const availableTabs = name.branches ? tabItems : tabItems.filter(([id]) => id !== "bazi");
-  const activeTab = availableTabs.some(([id]) => id === tab) ? tab : availableTabs[0][0];
-
   return (
-    <div className="space-y-3">
-      <Card className="overflow-hidden">
-        <CardHeader className="items-start !p-3 !pb-2">
-          <div className="min-w-0">
-            <CardTitle className="!text-base">名字解析</CardTitle>
-            <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <span className="font-serif text-[2rem] font-semibold leading-none">{name.fullName}</span>
-              <span className="font-serif text-2xl leading-none text-amber-600">{name.score}分</span>
-            </div>
+    <section className="flex flex-col bg-card">
+      <div className="flex items-start justify-between gap-3 p-4">
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground">名字解析</p>
+          <div className="mt-1 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+            <span className="font-serif text-[1.75rem] font-semibold leading-none tracking-wide">{name.fullName}</span>
+            <span className="text-lg font-semibold tabular-nums leading-none text-emerald-600">{name.score}</span>
+            <span className="text-xs text-muted-foreground">{name.grade}</span>
           </div>
-          <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => toggleFavorite(name.id)}>
-            <Star weight={favorite ? "fill" : "regular"} className={cn("h-4 w-4", favorite && "text-amber-500")} />
-            {favorite ? "已收藏" : "收藏"}
-          </Button>
-        </CardHeader>
-        <TabsList>
-          {availableTabs.map(([id, label]) => (
-            <TabsTrigger key={id} active={activeTab === id} onClick={() => setTab(id)}>
-              {label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        <CardContent className="pt-4">
-          <TabsContent active>
-            <DetailContent tab={activeTab} name={name} />
-          </TabsContent>
-        </CardContent>
-      </Card>
-      <ComparePanel names={names} comparedIds={comparedIds} selectedId={name.id} toggleCompare={toggleCompare} />
-    </div>
+        </div>
+        <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => toggleFavorite(name.id)}>
+          <Star weight={favorite ? "fill" : "regular"} className={cn("h-3.5 w-3.5", favorite && "text-amber-500")} />
+          {favorite ? "已收藏" : "收藏"}
+        </Button>
+      </div>
+      <Section title="评分构成">
+        <MetricBars name={name} />
+      </Section>
+      {name.branches ? (
+        <Section title="八字五行">
+          <Distribution name={name} />
+          <BranchGrid name={name} />
+          <p className="text-[13px] leading-6 text-muted-foreground">{name.analysis}</p>
+        </Section>
+      ) : null}
+      <Section title="音律分析">
+        <p className="text-[13px] leading-6 text-muted-foreground">
+          “{name.fullName}”声母开合有序，尾音清亮，读来不拗口，适合日常高频呼唤。
+        </p>
+      </Section>
+      <Section title="字形结构">
+        <p className="text-[13px] leading-6 text-muted-foreground">字形左右疏密均衡，笔画不过重，签名与屏幕显示都有较好识别度。</p>
+      </Section>
+      <Section title="寓意解析">
+        <p className="text-[13px] leading-6 text-muted-foreground">{name.summary}</p>
+      </Section>
+      <Section title="出处典故">
+        <p className="text-[13px] leading-6 text-muted-foreground">{name.poems}</p>
+      </Section>
+      <Section title="避讳提醒">
+        <p className="text-[13px] leading-6 text-muted-foreground">
+          {name.risk}。未命中常见谐音、生肖冲突与负面联想，建议继续结合家族避讳复核。
+        </p>
+      </Section>
+      <div className="border-t border-border/70 p-4">
+        <Button type="button" variant="outline" className="w-full">
+          <FileText className="h-3.5 w-3.5" />
+          查看完整解析报告
+        </Button>
+      </div>
+    </section>
   );
 }

@@ -14,16 +14,16 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground shadow-inset hover:bg-primary/92",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/82",
-        outline: "border border-border bg-card hover:bg-secondary/70",
-        ghost: "hover:bg-secondary/70",
+        default: "bg-primary text-primary-foreground hover:bg-primary/85",
+        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/70",
+        outline: "border border-border bg-card text-foreground shadow-paper hover:bg-secondary/60",
+        ghost: "text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
         gold: "bg-amber-500 text-white hover:bg-amber-600",
       },
       size: {
-        default: "h-9 px-4 py-2",
-        sm: "h-8 px-3 text-xs",
-        icon: "h-8 w-8",
+        default: "h-8 px-3.5",
+        sm: "h-7 px-2.5 text-xs",
+        icon: "h-7 w-7",
       },
     },
     defaultVariants: {

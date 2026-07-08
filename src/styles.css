@@ -1,7 +1,7 @@
 /**
  * - [INPUT]: 依赖 tailwind.config.js 的 content 扫描与 shadcn 语义 token。
- * - [OUTPUT]: 提供全局 Tailwind 层、CSS 变量、工作台响应式壳子、共享面板骨架、滑块、焦点样式与原生日期时间选择器图标遮罩。
- * - [POS]: src 的视觉地基，被所有组件消费，统一页面背景、三栏断点、面板接缝与交互基线。
+ * - [OUTPUT]: 提供全局 Tailwind 层、中性色 CSS 变量、全高工作台三栏布局（顶栏 + 独立滚动列）、滑块、焦点样式与原生日期时间选择器图标遮罩。
+ * - [POS]: src 的视觉地基，被所有组件消费，统一 Vercel 式中性色、栏间接缝与交互基线。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 @tailwind base;
@@ -9,21 +9,21 @@
 @tailwind utilities;
 
 :root {
-  --background: 43 38% 97%;
-  --foreground: 28 23% 17%;
-  --card: 42 36% 98%;
-  --card-foreground: 28 23% 17%;
-  --primary: 154 32% 43%;
-  --primary-foreground: 40 48% 97%;
-  --secondary: 42 40% 93%;
-  --secondary-foreground: 30 20% 26%;
-  --muted: 40 28% 91%;
-  --muted-foreground: 31 12% 46%;
-  --accent: 39 60% 54%;
-  --accent-foreground: 31 28% 17%;
-  --border: 36 24% 84%;
-  --input: 36 24% 84%;
-  --ring: 154 32% 43%;
+  --background: 0 0% 98%;
+  --foreground: 240 6% 10%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 6% 10%;
+  --primary: 240 6% 10%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 240 5% 96%;
+  --secondary-foreground: 240 5% 26%;
+  --muted: 240 5% 96%;
+  --muted-foreground: 240 4% 46%;
+  --accent: 240 5% 96%;
+  --accent-foreground: 240 6% 10%;
+  --border: 240 6% 90%;
+  --input: 240 6% 87%;
+  --ring: 240 6% 10%;
   --radius: 0.5rem;
 }
 
@@ -40,11 +40,10 @@ body {
   min-width: 320px;
   min-height: 100vh;
   color: hsl(var(--foreground));
-  background:
-    radial-gradient(circle at 16% 2%, rgba(220, 174, 82, 0.12), transparent 26rem),
-    linear-gradient(180deg, #fbfaf6 0%, #f7f4ed 100%);
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: hsl(var(--background));
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 button,
@@ -72,59 +71,57 @@ input[type="range"] {
   background: hsl(var(--primary));
 }
 
-.paper-grid {
-  background-image:
-    linear-gradient(rgba(122, 99, 55, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(122, 99, 55, 0.03) 1px, transparent 1px);
-  background-size: 28px 28px;
+/* ============================================================
+ * 工作台骨架：顶栏 + 三栏。桌面端整体锁定视口高度，
+ * 每栏独立滚动；窄屏退化为单列自然滚动。
+ * ============================================================ */
+.workbench-app {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
 }
 
-.workbench-shell {
+.workbench-columns {
   display: grid;
-  width: min(100%, 1880px);
-  margin: 0 auto;
-  padding: 0.5rem;
-  row-gap: 0.75rem;
-  column-gap: 0;
+  flex: 1;
+  min-height: 0;
 }
 
-.workbench-shell > * {
+.workbench-columns > * {
   min-width: 0;
 }
 
-@media (min-width: 1120px) {
-  .workbench-shell {
-    grid-template-columns: minmax(286px, 330px) minmax(520px, 1fr) minmax(286px, 350px);
-    align-items: start;
-    row-gap: 0;
-  }
-
-  .workbench-shell > * + * {
-    margin-left: -1px;
-  }
-
-  .workbench-shell > section,
-  .workbench-shell > div > section {
-    box-shadow: none;
-  }
-
-  .workbench-shell > section:first-child {
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
-  }
-
-  .workbench-shell > section:nth-child(2) {
-    border-radius: 0;
-  }
-
-  .workbench-shell > div > section {
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
+@media (max-width: 1023.98px) {
+  .workbench-columns > * + * {
+    border-top: 1px solid hsl(var(--border));
   }
 }
 
-@media (min-width: 1440px) {
-  .workbench-shell {
-    grid-template-columns: clamp(340px, 22vw, 410px) minmax(640px, 1fr) clamp(390px, 26vw, 500px);
+@media (min-width: 1024px) {
+  .workbench-app {
+    height: 100vh;
+  }
+
+  .workbench-columns {
+    grid-template-columns: minmax(280px, 320px) minmax(480px, 1fr) minmax(320px, 384px);
+  }
+
+  .workbench-columns > * {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .workbench-columns > *:first-child {
+    border-right: 1px solid hsl(var(--border));
+  }
+
+  .workbench-columns > *:last-child {
+    border-left: 1px solid hsl(var(--border));
+  }
+}
+
+@media (min-width: 1536px) {
+  .workbench-columns {
+    grid-template-columns: 340px minmax(560px, 1fr) 420px;
   }
 }

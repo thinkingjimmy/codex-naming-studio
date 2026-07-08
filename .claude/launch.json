@@ -6,6 +6,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["scripts/start-workbench.mjs"],
       "port": 43318
+    },
+    {
+      "name": "workbench-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", "43418", "--strictPort"],
+      "port": 43418
     }
   ]
 }
