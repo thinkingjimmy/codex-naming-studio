@@ -1,7 +1,7 @@
 /**
- * - [INPUT]: 依赖 child_process、真实临时目录与 naming-state 的 link/rename 锁、request/claim mutation API。
- * - [OUTPUT]: 四幕并发探针：双接管、SIGSTOP fail-safe、ABA 恢复、双 claim 栅栏，并验证四进程交错守恒。
- * - [POS]: scripts 的代际 CAS 质量门禁；同文件兼任隔离子进程 worker，避免新增测试专用模块。
+ * - [INPUT]: 依赖 child_process、真实临时目录与 naming-state 的非空目录发布/永久 fence 锁、request/claim mutation API。
+ * - [OUTPUT]: 四幕并发探针：双接管、SIGSTOP fail-safe、第三写入者提交窗 fence、双 claim 栅栏，并验证四进程交错守恒。
+ * - [POS]: scripts 的目录代际锁质量门禁；同文件兼任隔离子进程 worker，机械证明陈旧 reaper 不能移动新锁。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import { spawn } from "node:child_process";
@@ -11,7 +11,6 @@ import {
   readFile,
   readdir,
   rm,
-  unlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -53,7 +52,7 @@ async function runProbe() {
       throw new Error(`Revision conservation failed: ${interleavedState.triggerRevision}.`);
     }
     assertLegalStatuses(interleavedState);
-    await assertNoLockResidue(interleaved);
+    await assertLockQuiescent(interleaved);
 
     // 第一幕：获取后崩溃留下完整 owner；两个接管者竞争，只有一个收割该 inode。
     const takeover = path.join(root, "takeover");
@@ -65,7 +64,10 @@ async function runProbe() {
     );
     if (crashed.code === 0) throw new Error("Crash-after-acquire worker unexpectedly succeeded.");
     const owner = JSON.parse(
-      await readFile(path.join(takeover, ".naming-product", "state.lock"), "utf8")
+      await readFile(
+        path.join(takeover, ".naming-product", "state.lock", "owner.json"),
+        "utf8"
+      )
     );
     if (!owner.pid || !owner.nonce || !owner.startedAt) {
       throw new Error("Published lock must contain a complete owner.");
@@ -80,7 +82,7 @@ async function runProbe() {
       .join("\n")
       .match(/reaped dead lock/g)?.length || 0;
     if (reaps !== 1) throw new Error(`Exactly one dead-lock reap expected, got ${reaps}.`);
-    await assertNoLockResidue(takeover);
+    await assertLockQuiescent(takeover);
 
     // 第二幕：活持有者 SIGSTOP 仍被 kill(pid,0) 视为活；竞争写入 5s 明确超时。
     const stopped = path.join(root, "stopped");
@@ -98,9 +100,10 @@ async function runProbe() {
     await writeFile(release, "release\n");
     assertSuccess(await waitChild(holder));
     assertSuccess(await waitChild(child(["save", "after-resume"], stopped)));
-    await assertNoLockResidue(stopped);
+    await assertLockQuiescent(stopped);
 
-    // 第三幕：接管者验尸后暂停；锁路径换成活 owner，rename 后审视并恢复活锁。
+    // 第三幕：陈旧 reaper 暂停；另一写入者收割死代并留下永久 fence。
+    // 第三写入者在 nonce 检查与 state rename 之间暂停时，陈旧 reaper 也不能移动它。
     const aba = path.join(root, "aba");
     await mkdir(aba);
     await waitChild(
@@ -115,21 +118,39 @@ async function runProbe() {
       NAMING_REAP_CONTINUE_FILE: reapContinue,
     });
     await waitForFile(reapReady);
-    await unlink(path.join(aba, ".naming-product", "state.lock"));
-    const liveReady = path.join(root, "live.ready");
-    const liveRelease = path.join(root, "live.release");
-    const live = child(["hold", liveReady, liveRelease], aba);
-    await waitForFile(liveReady);
+    const firstReaper = await waitChild(child(["save", "first-reaper"], aba));
+    assertSuccess(firstReaper);
+
+    const commitReady = path.join(root, "commit.ready");
+    const commitContinue = path.join(root, "commit.continue");
+    const liveWriter = child(["save", "live-generation"], aba, {
+      NAMING_COMMIT_READY_FILE: commitReady,
+      NAMING_COMMIT_CONTINUE_FILE: commitContinue,
+    });
+    await waitForFile(commitReady);
     await writeFile(reapContinue, "continue\n");
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 100));
-    await writeFile(liveRelease, "release\n");
-    assertSuccess(await waitChild(live));
+    const liveOwner = JSON.parse(
+      await readFile(
+        path.join(aba, ".naming-product", "state.lock", "owner.json"),
+        "utf8"
+      )
+    );
+    if (liveOwner.pid !== liveWriter.pid) {
+      throw new Error("Stale reaper moved the third writer during its commit window.");
+    }
+    await writeFile(commitContinue, "continue\n");
+    assertSuccess(await waitChild(liveWriter));
     const reaperResult = await waitChild(reaper);
     assertSuccess(reaperResult);
-    if (!reaperResult.stderr.includes("ABA detected; restored live lock")) {
-      throw new Error(`ABA restore path not observed: ${reaperResult.stderr}`);
+    if (!reaperResult.stderr.includes("generation fence blocked stale reap")) {
+      throw new Error(`Generation fence did not block stale reap: ${reaperResult.stderr}`);
     }
-    await assertNoLockResidue(aba);
+    const abaState = await readStateUnlocked({ projectDir: aba });
+    if (!abaState.requests["live-generation"] || !abaState.requests.reaper) {
+      throw new Error("Commit-window interleave lost a writer.");
+    }
+    await assertLockQuiescent(aba);
 
     // 第四幕：后 claim 覆盖 claimOwner，旧 claimId 拒绝，恰一份结果提交。
     const claims = path.join(root, "claims");
@@ -159,9 +180,9 @@ async function runProbe() {
     ) {
       throw new Error("Exactly one fenced result must reach terminal state.");
     }
-    await assertNoLockResidue(claims);
+    await assertLockQuiescent(claims);
 
-    console.log("OK: concurrency lock generations, ABA recovery, and claim fencing are sound.");
+    console.log("OK: directory generations, stale-reaper fences, commit windows, and claim fencing are sound.");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -183,7 +204,9 @@ async function runWorker(workerProjectDir, action, ...args) {
       await withStateLock({ projectDir: workerProjectDir }, async ({ owner, paths }) => {
         await writeFile(ready, "ready\n");
         await waitForFile(release, 15_000);
-        const current = JSON.parse(await readFile(paths.lockFile, "utf8"));
+        const current = JSON.parse(
+          await readFile(path.join(paths.lockDir, "owner.json"), "utf8")
+        );
         if (current.nonce !== owner.nonce) {
           throw Object.assign(new Error("LOCK_FENCE_LOST in holder"), { code: "LOCK_FENCE_LOST" });
         }
@@ -239,13 +262,24 @@ async function waitForFile(file, timeout = 2_000) {
   throw new Error(`Timed out waiting for ${file}.`);
 }
 
-async function assertNoLockResidue(projectDir) {
+async function assertLockQuiescent(projectDir) {
   const stateDir = path.join(projectDir, ".naming-product");
   const names = await readdir(stateDir).catch(() => []);
-  const residue = names.filter(
-    (name) => name === "state.lock" || name.startsWith("state.reap-") || name.startsWith("owner-")
+  const active = names.filter(
+    (name) =>
+      name === "state.lock" ||
+      name.startsWith("state.owner-") ||
+      name.startsWith("state.release-")
   );
-  if (residue.length) throw new Error(`Lock residue remains: ${residue.join(", ")}`);
+  if (active.length) throw new Error(`Active lock residue remains: ${active.join(", ")}`);
+  for (const name of names.filter((entry) => entry.startsWith("state.reap-"))) {
+    const owner = JSON.parse(
+      await readFile(path.join(stateDir, name, "owner.json"), "utf8")
+    );
+    if (name !== `state.reap-${owner.nonce}`) {
+      throw new Error(`Invalid generation fence: ${name}.`);
+    }
+  }
 }
 
 function assertLegalStatuses(state) {

@@ -1,6 +1,6 @@
 {
   "name": "codex-naming-studio",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "A Codex naming workbench with event-driven hosted requests, claim-fenced result writeback, and native widget support; no API key required.",
   "author": {
     "name": "thinkingjimmy",

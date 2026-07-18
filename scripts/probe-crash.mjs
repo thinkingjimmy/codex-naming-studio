@@ -1,6 +1,6 @@
 /**
  * - [INPUT]: 依赖 child_process、真实临时目录与 naming-state 的三种环境故障注入点。
- * - [OUTPUT]: 验证 acquire 后崩溃可接管、state/trigger 中断可修复、trigger 部分成功会在零读取下后台补投。
+ * - [OUTPUT]: 验证目录/旧文件锁崩溃可由代际 fence 接管、state/trigger 中断可修复、trigger 部分成功会在零读取下后台补投。
  * - [POS]: scripts 的崩溃一致性质量门禁；同文件兼任短生命周期故障子进程。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -10,6 +10,7 @@ import {
   mkdtemp,
   readFile,
   rm,
+  writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -56,8 +57,13 @@ async function runProbe() {
       NAMING_CRASH_AFTER_ACQUIRE: "1",
     });
     if (crashedAcquire.code === 0) throw new Error("Acquire crash injection did not exit.");
-    const lockFile = path.join(acquire, ".naming-product", "state.lock");
-    const owner = JSON.parse(await readFile(lockFile, "utf8"));
+    const ownerFile = path.join(
+      acquire,
+      ".naming-product",
+      "state.lock",
+      "owner.json"
+    );
+    const owner = JSON.parse(await readFile(ownerFile, "utf8"));
     if (!owner.pid || !owner.nonce || !owner.startedAt) {
       throw new Error("Crash-after-acquire lock owner is incomplete.");
     }
@@ -68,6 +74,22 @@ async function runProbe() {
     );
     if (Date.now() - takeoverStarted >= 1_000) {
       throw new Error("Dead acquired lock was not reaped immediately.");
+    }
+
+    const legacy = path.join(root, "legacy-lock");
+    const legacyStateDir = path.join(legacy, ".naming-product");
+    await mkdir(legacyStateDir, { recursive: true });
+    await writeFile(
+      path.join(legacyStateDir, "state.lock"),
+      `${JSON.stringify(owner)}\n`
+    );
+    await saveNamingRequest(
+      { projectDir: legacy },
+      { id: "legacy-takeover", profile: { surname: "林", fullNameLength: 3 } }
+    );
+    const legacyState = await readStateUnlocked({ projectDir: legacy });
+    if (!legacyState.requests["legacy-takeover"]) {
+      throw new Error("Legacy file lock was not migrated through a generation fence.");
     }
 
     const between = path.join(root, "between");

@@ -1,17 +1,15 @@
 /**
  * - [INPUT]: 依赖 node:fs/promises、node:path/crypto，读取用户项目状态并依赖 name-engine/task-plan 归一化业务数据。
- * - [OUTPUT]: 提供纯读 readStateUnlocked/publicState、link+rename 代际锁、显式 trigger 修复、请求保存/认领/claimId 栅栏结果提交。
- * - [POS]: mcp/lib 的并发状态单一真相源；所有 mutation 串行且提交前验 nonce，读操作绝不写文件或触发 Agent。
+ * - [OUTPUT]: 提供纯读 readStateUnlocked/publicState、非空目录原子发布/私有化释放与永久代际 fence 锁、显式 trigger 修复、请求保存/认领/claimId 栅栏结果提交。
+ * - [POS]: mcp/lib 的并发状态单一真相源；永久 fence 阻断陈旧 reaper 触碰新锁，mutation 串行且读操作绝不写文件或触发 Agent。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import crypto from "node:crypto";
 import {
-  link,
   mkdir,
   readFile,
   rename,
   rm,
-  unlink,
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
@@ -27,6 +25,8 @@ const LOCK_RETRY_MS = 25;
 const LOCK_TIMEOUT_MS = 5_000;
 const TRIGGER_RETRY_MIN_MS = 50;
 const TRIGGER_RETRY_MAX_MS = 5_000;
+const OWNER_NONCE_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const triggerRepairs = new Map();
 let triggerRenameFailures = parseFailureCount(
   process.env.NAMING_FAIL_TRIGGER_RENAME
@@ -54,7 +54,7 @@ export function resolveNamingPaths(args = {}) {
     stateDir,
     stateFile: path.join(stateDir, "state.json"),
     triggerFile: path.join(stateDir, "trigger.json"),
-    lockFile: path.join(stateDir, "state.lock"),
+    lockDir: path.join(stateDir, "state.lock"),
   };
 }
 
@@ -282,8 +282,8 @@ export async function repairTriggerFile(args = {}) {
 }
 
 // ============================================================================
-// link 原子发布 + rename-审视-恢复：锁可见即含完整 owner；接管检查的就是
-// 被移到私有 reap 路径的 inode。每次数据 rename 前再次校验 nonce。
+// 完整非空目录经 rename 原子发布；死代锁移动到按 nonce 固定命名且永久保留
+// 的 fence。目标非空使陈旧 reaper 的 rename 必然失败，不能移动后来者的锁。
 // ============================================================================
 export async function withStateLock(
   args,
@@ -309,16 +309,23 @@ async function acquireStateLock(paths) {
       nonce: crypto.randomUUID(),
       startedAt: new Date().toISOString(),
     };
-    const ownerFile = path.join(paths.stateDir, `owner-${owner.nonce}.tmp`);
-    await writeFile(ownerFile, `${JSON.stringify(owner)}\n`, { flag: "wx" });
+    const ownerDir = path.join(
+      paths.stateDir,
+      `state.owner-${owner.nonce}.tmp`
+    );
+    await mkdir(ownerDir, { mode: 0o700 });
+    await writeFile(
+      path.join(ownerDir, "owner.json"),
+      `${JSON.stringify(owner)}\n`,
+      { flag: "wx", mode: 0o600 }
+    );
     try {
-      await link(ownerFile, paths.lockFile);
-      await unlink(ownerFile);
+      await rename(ownerDir, paths.lockDir);
       if (process.env.NAMING_CRASH_AFTER_ACQUIRE === "1") process.exit(93);
       return owner;
     } catch (error) {
-      await rm(ownerFile, { force: true });
-      if (error.code !== "EEXIST") throw error;
+      await rm(ownerDir, { recursive: true, force: true });
+      if (!isOccupiedLockTarget(error)) throw error;
     }
     await reapDeadLock(paths);
     await delay(LOCK_RETRY_MS);
@@ -332,7 +339,7 @@ async function acquireStateLock(paths) {
 async function reapDeadLock(paths) {
   let observed;
   try {
-    observed = await readOwner(paths.lockFile);
+    observed = await readOwner(paths.lockDir);
   } catch (error) {
     if (error.code === "ENOENT") return;
     return;
@@ -340,46 +347,48 @@ async function reapDeadLock(paths) {
   if (isProcessAlive(observed.pid)) return;
   await pauseBeforeReapForProbe();
 
-  const reapFile = path.join(paths.stateDir, `state.reap-${crypto.randomUUID()}`);
+  const fenceDir = path.join(paths.stateDir, `state.reap-${observed.nonce}`);
   try {
-    await rename(paths.lockFile, reapFile);
+    await rename(paths.lockDir, fenceDir);
   } catch (error) {
     if (error.code === "ENOENT") return;
+    if (isOccupiedLockTarget(error)) {
+      console.error(
+        `[naming-state] generation fence blocked stale reap nonce=${observed.nonce}`
+      );
+      return;
+    }
     throw error;
   }
 
   let reaped;
   try {
-    reaped = await readOwner(reapFile);
+    reaped = await readOwner(fenceDir);
   } catch (error) {
-    console.error(`[naming-state] invalid private reap file kept: ${reapFile}`);
+    console.error(`[naming-state] invalid generation fence kept: ${fenceDir}`);
+    return;
+  }
+  if (reaped.nonce !== observed.nonce) {
+    console.error(
+      `[naming-state] generation mismatch fenced fail-closed observed=${observed.nonce} moved=${reaped.nonce}`
+    );
     return;
   }
   if (!isProcessAlive(reaped.pid)) {
-    await unlink(reapFile);
     console.error(
       `[naming-state] reaped dead lock pid=${reaped.pid} nonce=${reaped.nonce}`
     );
     return;
   }
-
-  try {
-    await rename(reapFile, paths.lockFile);
-    console.error(
-      `[naming-state] ABA detected; restored live lock pid=${reaped.pid} nonce=${reaped.nonce}`
-    );
-  } catch (error) {
-    if (error.code !== "EEXIST") throw error;
-    console.error(
-      `[naming-state] ABA restore conflict; kept ${reapFile}; live owner will fail its nonce fence`
-    );
-  }
+  console.error(
+    `[naming-state] PID reuse or external lock replacement fenced fail-closed pid=${reaped.pid} nonce=${reaped.nonce}`
+  );
 }
 
 async function assertLockOwner(paths, owner) {
   let current;
   try {
-    current = await readOwner(paths.lockFile);
+    current = await readOwner(paths.lockDir);
   } catch (error) {
     throw new NamingStateError(
       "LOCK_FENCE_LOST",
@@ -397,9 +406,14 @@ async function assertLockOwner(paths, owner) {
 
 async function releaseStateLock(paths, owner) {
   try {
-    const current = await readOwner(paths.lockFile);
+    const current = await readOwner(paths.lockDir);
     if (current.nonce !== owner.nonce) return;
-    await unlink(paths.lockFile);
+    const releaseDir = path.join(
+      paths.stateDir,
+      `state.release-${owner.nonce}`
+    );
+    await rename(paths.lockDir, releaseDir);
+    await rm(releaseDir, { recursive: true, force: true });
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
@@ -436,6 +450,7 @@ async function atomicJsonCommit(file, payload, paths, owner, kind) {
   try {
     await writeFile(temp, `${JSON.stringify(payload, null, 2)}\n`);
     await assertLockOwner(paths, owner);
+    await pauseBeforeCommitForProbe(kind);
     if (kind === "trigger" && triggerRenameFailures > 0) {
       triggerRenameFailures -= 1;
       throw new NamingStateError(
@@ -558,17 +573,28 @@ async function readTriggerRevision(file) {
   }
 }
 
-async function readOwner(file) {
-  const owner = JSON.parse(await readFile(file, "utf8"));
+async function readOwner(directory) {
+  let raw;
+  try {
+    raw = await readFile(path.join(directory, "owner.json"), "utf8");
+  } catch (error) {
+    if (error.code !== "ENOTDIR") throw error;
+    raw = await readFile(directory, "utf8");
+  }
+  const owner = JSON.parse(raw);
   if (
     !Number.isSafeInteger(owner.pid) ||
     owner.pid <= 0 ||
-    !nonEmpty(owner.nonce) ||
+    !OWNER_NONCE_PATTERN.test(nonEmpty(owner.nonce)) ||
     !nonEmpty(owner.startedAt)
   ) {
     throw new NamingStateError("INVALID_LOCK_OWNER", "Invalid lock owner.");
   }
   return owner;
+}
+
+function isOccupiedLockTarget(error) {
+  return ["EEXIST", "ENOTEMPTY", "EISDIR", "ENOTDIR"].includes(error.code);
 }
 
 function isProcessAlive(pid) {
@@ -584,6 +610,23 @@ function isProcessAlive(pid) {
 async function pauseBeforeReapForProbe() {
   const ready = nonEmpty(process.env.NAMING_REAP_READY_FILE);
   const proceed = nonEmpty(process.env.NAMING_REAP_CONTINUE_FILE);
+  if (!ready || !proceed) return;
+  await writeFile(ready, "ready\n");
+  while (true) {
+    try {
+      await readFile(proceed);
+      return;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    await delay(10);
+  }
+}
+
+async function pauseBeforeCommitForProbe(kind) {
+  if (kind !== "state") return;
+  const ready = nonEmpty(process.env.NAMING_COMMIT_READY_FILE);
+  const proceed = nonEmpty(process.env.NAMING_COMMIT_CONTINUE_FILE);
   if (!ready || !proceed) return;
   await writeFile(ready, "ready\n");
   while (true) {

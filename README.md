@@ -78,7 +78,7 @@ pending --claim(claimId)--> processing --matching claimId--> completed | error
 
 - `.naming-product/state.json` 是业务真相源；`.naming-product/trigger.json` 是只在新请求到达时推进 `triggerRevision` 的调度信号。
 - 提交顺序固定为 state 后 trigger。state 成功、trigger 暂败时返回 `{ committed: true, triggerLagging: true }`，GUI 继续轮询，写入进程后台指数退避补投；纯读 API 永不修复。
-- 所有 mutation 使用 `owner tmp → link(state.lock)` 原子发布完整 owner。死 PID 才可接管；接管用 `rename` 把当前 inode 移到私有 reap 文件，再审视并在 ABA 时恢复活 owner。每次文件 rename 前重验 nonce。
+- 所有 mutation 先在同目录写完整的非空 owner 临时目录，再以 `rename` 原子发布为 `state.lock/`。只有死 PID 可被移入按 owner nonce 固定命名、永久保留且非空的 `state.reap-<nonce>/` 代际 fence；陈旧 reaper 再次处理同一代时，目标已存在使 rename 必然失败，因此不能移动后来者的锁。释放也先把自己的锁原子移入唯一 `state.release-<nonce>/` 再私下删除，绝不暴露可被替换的空目录窗口。每次数据 rename 前仍重验当前 owner，形成可机械证明的提交边界。
 - `processing` 可以重新 claim，后一个 claimId 取代前一个。结果回写必须匹配当前 `claimOwner.claimId`；旧轮最多浪费计算，不能覆盖新结果。
 
 ## 故障排查
@@ -120,7 +120,7 @@ GUI 的每个勾选、输入与风格强度由 `src/lib/task-plan.js` 的规则�
 ```bash
 pnpm install
 pnpm probe:mcp           # 验证 MCP claimId 与纯读闭环
-pnpm probe:concurrency   # 验证代际锁、SIGSTOP、ABA 与双 claim
+pnpm probe:concurrency   # 验证目录代际锁、SIGSTOP、第三写入者提交窗与双 claim
 pnpm probe:crash         # 验证三类崩溃/部分成功自愈
 pnpm dev         # 启动工作台（默认 http://127.0.0.1:43318，状态写入当前目录）
 pnpm quality     # 语法检查 + 构建 + 探针
@@ -156,12 +156,13 @@ pnpm-workspace.yaml - pnpm 构建脚本白名单，允许 esbuild 完成 Vite �
 design-qa.md - 源截图与实现截图的设计 QA 门禁记录
 </config>
 
-架构决策: 双形态、双文件、单业务真相源。hosted 形态以 `trigger.json` 只表达“何时唤醒”，无头 Agent 单轮只回答“做什么”；原生 widget 以 follow-up 唤醒对话。两者共享 `state.json`，所有 mutation 经代际锁串行，claimId fencing 把并行计算收敛为唯一可提交结果。localhost 只作开发/降级，纯读与修复严格分离。没有任何模型密钥；Codex 自身推理就是模型。
+架构决策: 双形态、双文件、单业务真相源。hosted 形态以 `trigger.json` 只表达“何时唤醒”，无头 Agent 单轮只回答“做什么”；原生 widget 以 follow-up 唤醒对话。两者共享 `state.json`，所有 mutation 经“完整非空目录发布 + 永久代际 fence”串行；fence 以极少量死代目录换取陈旧 reaper 永远不能触碰新锁的确定性，claimId fencing 再把并行计算收敛为唯一可提交结果。localhost 只作开发/降级，纯读与修复严格分离。没有任何模型密钥；Codex 自身推理就是模型。
 
 开发规范: 新增或改变业务文件时先更新 L3 头部，再检查最近 README.md。
 
 变更日志:
-- 2026-07-18: v0.6.0 增加 hosted Tier 2 契约——专用 trigger、link 原子发布与 rename-审视-恢复代际锁、state→trigger 部分成功提交/后台补投、pending→processing claimId 栅栏、纯读/修复分离及并发/崩溃探针。
+- 2026-07-18: v0.6.1 修复并发审阅缺口——锁改为完整非空目录原子发布、永久 nonce fence 与原子私有化释放，删除依赖 rename 覆盖语义的 ABA 恢复分支；探针加入陈旧 reaper、第三写入者提交窗与释放/获取交错。
+- 2026-07-18: v0.6.0 增加 hosted Tier 2 契约——专用 trigger、state→trigger 部分成功提交/后台补投、pending→processing claimId 栅栏、纯读/修复分离及并发/崩溃探针。
 - 2026-07-08: 原生 widget 以 Cowart 模式回归（v0.5.0）——新增 render_naming_workbench_widget 渲染工具与 ui://widget/naming/workbench.html 资源，api-client 双模路由（widget 桥 / localhost fetch），生成点击经 sendFollowUpMessage 唤醒 Codex，根治「watcher 死后请求滞留」的结构性缺陷；localhost 全链路保留为兜底，探针覆盖 widget 单文件产物 CSP 断言。
 - 2026-07-08: Product Design 审阅后压实工作台——候选中栏改为扫描表，选中态从整块描边改为左侧状态条，右栏解析头部收敛，三栏共享面板阴影退场。
 - 2026-07-08: 优化工作台响应式布局——三栏断点提前到 1120px，中间 gutter 归零，候选行与对比卡片压实，宽屏不再误掉单列。
