@@ -6,7 +6,10 @@
  */
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { latestPendingRequest, readState } from "../mcp/lib/naming-state.mjs";
+import {
+  latestPendingRequest,
+  readStateUnlocked,
+} from "../mcp/lib/naming-state.mjs";
 
 const args = process.argv.slice(2);
 const options = { projectDir: process.cwd(), timeout: 1800, interval: 300 };
@@ -18,7 +21,7 @@ for (let index = 0; index < args.length; index += 1) {
 
 const startedAt = Date.now();
 while (true) {
-  const state = await readState({ projectDir: options.projectDir });
+  const state = await readStateUnlocked({ projectDir: options.projectDir });
   const pending = latestPendingRequest(state);
   if (pending) report(pending);
 

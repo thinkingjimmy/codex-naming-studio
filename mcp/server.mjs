@@ -1,7 +1,7 @@
 /**
- * - [INPUT]: 依赖 MCP SDK、ext-apps 的 registerAppTool、zod、naming-state 共享状态库、name-engine 标准化能力与 widget-resource/naming-static-widget 的 widget 构建桥接。
- * - [OUTPUT]: 对外注册 render_naming_workbench_widget 渲染工具、ui://widget/naming/workbench.html 资源与 get/save 三个状态工具。
- * - [POS]: mcp 的唯一协议入口；widget 模式下 GUI 经宿主桥直接调状态工具，兜底模式下浏览器 GUI 走 Vite 状态 middleware 读写同一份文件。
+ * - [INPUT]: 依赖 MCP SDK、ext-apps、zod、naming-state 的纯读/请求/claim/结果事务与 widget 构建桥接。
+ * - [OUTPUT]: 注册 widget 资源/渲染工具及 get/save-request/claim/save-result 四个状态工具，instructions 固化 claimId 回写链路。
+ * - [POS]: mcp 的唯一协议入口；只做参数/工具边界，所有并发 mutation 与 claim 栅栏下沉到 naming-state。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import { readFileSync } from "node:fs";
@@ -11,21 +11,23 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-import { mergeProfile, normalizeCandidates, normalizeProfile } from "../src/lib/name-engine.js";
 import { NAMING_STATIC_BUILD_DIR, namingStaticHtml } from "./lib/naming-static-widget.mjs";
 import {
+  claimNamingRequest,
   nonEmpty,
   publicState,
-  readState,
+  readStateUnlocked,
+  repairTriggerFile,
   resolveNamingPaths,
   saveNamingRequest,
-  writeState,
+  saveNamingResult,
 } from "./lib/naming-state.mjs";
 import { pluginPath } from "./lib/plugin-root.mjs";
 import { injectMcpHostBridge, registerWidgetResource } from "./lib/widget-resource.mjs";
 
 const TOOL_GET_STATE = "get_naming_product_state";
 const TOOL_SAVE_REQUEST = "save_naming_product_request";
+const TOOL_CLAIM_REQUEST = "claim_naming_product_request";
 const TOOL_SAVE_RESULT = "save_naming_product_result";
 const TOOL_RENDER_WIDGET = "render_naming_workbench_widget";
 const NAMING_WIDGET_URI = "ui://widget/naming/workbench.html";
@@ -44,12 +46,16 @@ const server = new McpServer(
   },
   {
     instructions:
-      "Use render_naming_workbench_widget to open the naming workbench as a native Codex widget (pass the user's workspace as projectDir). The widget saves requests itself and posts 处理起名请求 follow-up messages; call save_naming_product_result after Codex has produced structured name candidates so the workbench can leave loading state.",
+      "Use render_naming_workbench_widget to open the workbench. To process a request, first call claim_naming_product_request and retain its claimId, then compute candidates, then call save_naming_product_result with the same requestId and claimId. If claimId is rejected, reload state and abandon that result; never overwrite another claimant.",
   },
 );
 
 registerNamingWidget(server);
 registerStateTools(server);
+
+await repairTriggerFile().catch((error) => {
+  console.error(`[naming-state] MCP startup trigger repair failed: ${error.message}`);
+});
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
@@ -136,7 +142,7 @@ function registerStateTools(mcpServer) {
     TOOL_GET_STATE,
     {
       title: "Get Naming Product State",
-      description: "Read pending requests and completed results for the Naming Studio workbench.",
+      description: "Purely read pending/processing requests, claimOwner, and completed results; this tool never repairs files or wakes an Agent.",
       inputSchema: projectArgsSchema,
       annotations: {
         readOnlyHint: true,
@@ -146,7 +152,7 @@ function registerStateTools(mcpServer) {
       },
     },
     async (input = {}) => {
-      const state = await readState(input);
+      const state = await readStateUnlocked(input);
       return {
         content: [{ type: "text", text: `Loaded Naming Product state from ${state.paths.stateFile}.` }],
         structuredContent: publicState(state),
@@ -158,7 +164,7 @@ function registerStateTools(mcpServer) {
     TOOL_SAVE_REQUEST,
     {
       title: "Save Naming Product Request",
-      description: "Persist a naming request (with derived plan) so Codex can read it and later write structured results.",
+      description: "Commit a new pending naming request and publish its trigger. committed=true means callers must poll even when triggerLagging=true.",
       inputSchema: {
         ...projectArgsSchema,
         request: z.object({
@@ -185,14 +191,50 @@ function registerStateTools(mcpServer) {
           content: [{ type: "text", text: error instanceof Error ? error.message : "Invalid request." }],
         };
       }
-      const id = saved.latestRequestId;
+      const id = saved.requestId;
       return {
         content: [{ type: "text", text: `Saved Naming Product request ${id}.` }],
         structuredContent: {
-          request: saved.requests[id],
-          ...publicState(saved),
+          requestId: id,
+          committed: saved.committed,
+          triggerLagging: saved.triggerLagging,
+          request: saved.state.requests[id],
+          ...publicState(saved.state),
         },
       };
+    },
+  );
+
+  mcpServer.registerTool(
+    TOOL_CLAIM_REQUEST,
+    {
+      title: "Claim Naming Product Request",
+      description: "Claim a pending or processing request and return a fresh claimId. Keep that claimId and pass it to save_naming_product_result; a later claimant fences stale results.",
+      inputSchema: {
+        ...projectArgsSchema,
+        requestId: z.string().trim().optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async (input = {}) => {
+      try {
+        const claimed = await claimNamingRequest(input, input.requestId);
+        return {
+          content: [{ type: "text", text: `Claimed Naming Product request ${claimed.request.id}; retain claimId ${claimed.claimId} for result writeback.` }],
+          structuredContent: {
+            claimId: claimed.claimId,
+            request: claimed.request,
+            ...publicState(claimed.state),
+          },
+        };
+      } catch (error) {
+        return stateError(error);
+      }
     },
   );
 
@@ -200,10 +242,11 @@ function registerStateTools(mcpServer) {
     TOOL_SAVE_RESULT,
     {
       title: "Save Naming Product Result",
-      description: "Write Codex-generated naming candidates back to the state file, ending the workbench loading state.",
+      description: "Write candidates only after claim_naming_product_request. requestId and its matching claimId are both required; rejected claimId means reload state and abandon the stale result.",
       inputSchema: {
         ...projectArgsSchema,
         requestId: z.string().trim(),
+        claimId: z.string().trim(),
         result: z.object({
           profile: z.any().optional(),
           batch: z.number().optional(),
@@ -222,60 +265,30 @@ function registerStateTools(mcpServer) {
       },
     },
     async (input = {}) => {
-      const state = await readState(input);
-      const requestId = nonEmpty(input.requestId);
-      const request = state.requests[requestId];
-      if (!request) {
+      try {
+        const saved = await saveNamingResult(input, input);
+        const requestId = nonEmpty(input.requestId);
+        const error = saved.request.status === "error";
         return {
-          isError: true,
-          content: [{ type: "text", text: `Unknown Naming Product request: ${requestId}` }],
+          content: [{ type: "text", text: error ? `Saved Naming Product error for ${requestId}.` : `Saved Naming Product result for ${requestId}.` }],
+          structuredContent: {
+            request: saved.request,
+            ...publicState(saved.state),
+          },
         };
+      } catch (error) {
+        return stateError(error);
       }
-      if (request.status === "superseded") {
-        return {
-          isError: true,
-          content: [{ type: "text", text: `Naming Product request was superseded: ${requestId}` }],
-        };
-      }
-
-      const now = new Date().toISOString();
-      const result = input.result || {};
-      const profile = normalizeProfile(mergeProfile(request.profile || {}, result.profile || {}));
-      const batch = Number.isFinite(result.batch) ? result.batch : request.batch || 0;
-      const explicitError = nonEmpty(result.error);
-      const candidates = Array.isArray(result.candidates)
-        ? normalizeCandidates(result.candidates, profile, batch)
-        : [];
-      const error = explicitError || (candidates.length === 0 ? "Codex did not return any naming candidates." : "");
-
-      state.requests[requestId] = {
-        ...request,
-        profile,
-        batch,
-        status: error ? "error" : "completed",
-        updatedAt: now,
-        error: error || null,
-        result: error
-          ? null
-          : {
-              provider: nonEmpty(result.provider) || "codex",
-              model: nonEmpty(result.model) || "Codex",
-              notice: nonEmpty(result.notice) || "Codex 已完成命名测算，结果已回写到工作台。",
-              candidates,
-              profile,
-              batch,
-              completedAt: now,
-            },
-      };
-      if (!error) state.latestResultId = requestId;
-      const saved = await writeState(input, state);
-      return {
-        content: [{ type: "text", text: error ? `Saved Naming Product error for ${requestId}.` : `Saved Naming Product result for ${requestId}.` }],
-        structuredContent: {
-          request: saved.requests[requestId],
-          ...publicState(saved),
-        },
-      };
     },
   );
+}
+
+function stateError(error) {
+  const code = nonEmpty(error?.code) || "NAMING_STATE_ERROR";
+  const message = error instanceof Error ? error.message : "Invalid naming state mutation.";
+  return {
+    isError: true,
+    content: [{ type: "text", text: `${code}: ${message}` }],
+    structuredContent: { code },
+  };
 }

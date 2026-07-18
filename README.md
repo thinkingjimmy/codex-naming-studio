@@ -1,8 +1,8 @@
-# Codex Naming Studio - Codex 原生起名工作台
+# Codex Naming Studio - 事件驱动的 Codex 起名工作台
 
 React 19 + Vite 6 + Tailwind CSS 3 + shadcn 风格组件 + Phosphor Icons + Vite 状态 middleware + Codex MCP state tools
 
-Codex Naming Studio 是一个可安装到 Codex 的中文起名产品。Codex 启动本地工作台并在内置浏览器中打开，用户填写宝宝信息点击生成，请求经状态文件交给 Codex，Codex 运行测算后通过 MCP 工具把结构化结果写回，浏览器自动展示。全程零 API key。
+Codex Naming Studio 是一个可安装到 Codex、也可由桌面产品托管的中文起名产品。GUI 把请求原子写入状态文件并发布专用 trigger；Codex 单轮 claim 请求、完成测算后携 claimId 回写，浏览器自动展示。原生 widget 仍可用，全程零 API key。
 
 ## 安装
 
@@ -64,13 +64,28 @@ codex plugin add codex-naming-studio@personal
 | --- | --- | --- |
 | 安装 | 把安装提示词发给 Codex；完成后**新开一个对话** | 1. clone 仓库到 `~/plugins/codex-naming-studio` 2. `pnpm install` 3. `pnpm probe:mcp` 验证 MCP 状态工具 4. 确认 `.codex-plugin/plugin.json` 存在 5. 确认 `~/.agents/plugins/marketplace.json` 有插件条目（名字与路径必须与 plugin.json 一致）6. `codex plugin marketplace add ~` 7. `codex plugin add codex-naming-studio@personal` 8. 用 `codex plugin list` 校验状态为 `installed, enabled` 9. 提醒用户新开对话 |
 | 启动 | 在新对话中说"打开起名工作台" | 触发 `naming-studio-open`：调用 `render_naming_workbench_widget`（projectDir 传用户工作区）把工作台渲染为原生 Codex widget；首次渲染会惰性构建单文件包。widget 渲染失败时才降级到 localhost 兜底（start-workbench + 内置浏览器 + watcher）。**禁止**索要任何 API key |
-| 生成 | 左栏填写宝宝信息，点击"生成好名"，等待右侧 loading 结束；连续点击时新请求自动取代旧 pending | widget 保存请求并自动发出「处理起名请求 <id>」follow-up 消息唤醒 Codex，触发 `naming-studio-generate`：按 plan 先执行带 skill 的步骤（`naming-studio-bazi` 排盘、`naming-studio-research` 搜索），再按硬约束生成 8-12 个候选，调用 `save_naming_product_result` 回写，widget 轮询 1.6s 自取结果；兜底模式由 watcher 传递请求并在回写后重新 arm。失败也必须用 `result.error` 回写，绝不让 GUI 空转 |
+| 生成 | 左栏填写宝宝信息，点击"生成好名"，等待右侧 loading 结束；连续点击时新请求自动取代旧 pending/processing | 请求先提交 `state.json` 再发布 `trigger.json`；Codex 调 `claim_naming_product_request` 取得 claimId，按 plan 生成 8-12 个候选，再携同一 claimId 调 `save_naming_product_result`。hosted 单轮结束即退出，不启动 watcher/server；失败也必须携 claimId 回写 `result.error` |
+
+## Hosted 状态与并发协议
+
+状态机只有两种在飞态与三种既有终态：
+
+```text
+pending --claim(claimId)--> processing --matching claimId--> completed | error
+    \                              \
+     \--new request----------------> superseded
+```
+
+- `.naming-product/state.json` 是业务真相源；`.naming-product/trigger.json` 是只在新请求到达时推进 `triggerRevision` 的调度信号。
+- 提交顺序固定为 state 后 trigger。state 成功、trigger 暂败时返回 `{ committed: true, triggerLagging: true }`，GUI 继续轮询，写入进程后台指数退避补投；纯读 API 永不修复。
+- 所有 mutation 使用 `owner tmp → link(state.lock)` 原子发布完整 owner。死 PID 才可接管；接管用 `rename` 把当前 inode 移到私有 reap 文件，再审视并在 ABA 时恢复活 owner。每次文件 rename 前重验 nonce。
+- `processing` 可以重新 claim，后一个 claimId 取代前一个。结果回写必须匹配当前 `claimOwner.claimId`；旧轮最多浪费计算，不能覆盖新结果。
 
 ## 故障排查
 
 - **浏览器页面打不开或提示"本地工作台服务未运行"**：工作台服务器没在跑。在 Codex 对话中重新说"打开起名工作台"。
 - **Codex 说打开了但浏览器没出现**：插件可能未加载——用 `codex plugin list` 确认 `codex-naming-studio@personal` 为 `installed, enabled`，然后新开对话重试。
-- **点击生成后 loading 不结束**：Codex 侧 watcher 可能已超时退出。GUI 会立即显示已提交的批次与 request id，并在 2 分钟后停止前端 loading；再次点击生成会创建新 pending 并自动把旧 pending 标记为 `superseded`，在对话里说"继续等待起名请求"或"处理待办的起名请求"也可让 Codex 接管 latestPendingRequest。
+- **点击生成后 loading 不结束**：pending 超过 2 分钟会提示尚未接管；已经 claim 的 processing 保持“Codex 测算中”并允许 10 分钟。再次点击会创建新 pending，并把旧 pending/processing 标记为 `superseded`。
 - **端口 43318 被占用**：启动器会区分同项目工作台、其他项目工作台与非工作台服务；同项目直接复用，其他情况用 `NAMING_WORKBENCH_PORT` 换端口重启。
 
 ## 使用
@@ -85,7 +100,7 @@ Codex 会把工作台渲染为原生 widget（首次渲染需构建，稍等片�
 
 1. 在左栏填写宝宝信息（右侧保持空白状态）。
 2. 点击"生成好名"，widget 保存请求并自动向对话发送「处理起名请求」消息，右侧进入 loading。
-3. Codex 拿到请求与执行计划，按计划测算后调用 `save_naming_product_result` 回写，widget 轮询自动展示评分、五行、寓意与全维度解析。
+3. Codex 先 claim 拿到 claimId，按计划测算后携 claimId 调用 `save_naming_product_result` 回写，widget 轮询自动展示评分、五行、寓意与全维度解析。
 
 widget 渲染失败时 Codex 会降级到 localhost 兜底：启动本地服务器并在内置浏览器打开 `http://127.0.0.1:43318`，由请求监听器传递生成请求。
 
@@ -104,7 +119,9 @@ GUI 的每个勾选、输入与风格强度由 `src/lib/task-plan.js` 的规则�
 
 ```bash
 pnpm install
-pnpm probe:mcp   # 验证 MCP 状态工具闭环
+pnpm probe:mcp           # 验证 MCP claimId 与纯读闭环
+pnpm probe:concurrency   # 验证代际锁、SIGSTOP、ABA 与双 claim
+pnpm probe:crash         # 验证三类崩溃/部分成功自愈
 pnpm dev         # 启动工作台（默认 http://127.0.0.1:43318，状态写入当前目录）
 pnpm quality     # 语法检查 + 构建 + 探针
 ```
@@ -139,11 +156,12 @@ pnpm-workspace.yaml - pnpm 构建脚本白名单，允许 esbuild 完成 Vite �
 design-qa.md - 源截图与实现截图的设计 QA 门禁记录
 </config>
 
-架构决策: 双形态、单真相源。主形态是 MCP Apps 原生 widget（Cowart 模式）：`render_naming_workbench_widget` 渲染单文件 widget，GUI 经 `window.namingMcp` 直调 MCP 状态工具，生成点击以 `sendFollowUpMessage` 唤醒 Codex 新回合——事件驱动，无监听进程。兜底形态是 localhost（内置浏览器 + Vite middleware + watcher），仅供开发与 widget 渲染失败时降级。`.naming-product/state.json` 是两种形态共享的唯一真相源：候选统一走 normalizeCandidates，状态层维护 `latestPendingRequest` 并让旧 pending 进入 `superseded`。没有任何模型密钥；Codex 自身推理就是模型。
+架构决策: 双形态、双文件、单业务真相源。hosted 形态以 `trigger.json` 只表达“何时唤醒”，无头 Agent 单轮只回答“做什么”；原生 widget 以 follow-up 唤醒对话。两者共享 `state.json`，所有 mutation 经代际锁串行，claimId fencing 把并行计算收敛为唯一可提交结果。localhost 只作开发/降级，纯读与修复严格分离。没有任何模型密钥；Codex 自身推理就是模型。
 
 开发规范: 新增或改变业务文件时先更新 L3 头部，再检查最近 README.md。
 
 变更日志:
+- 2026-07-18: v0.6.0 增加 hosted Tier 2 契约——专用 trigger、link 原子发布与 rename-审视-恢复代际锁、state→trigger 部分成功提交/后台补投、pending→processing claimId 栅栏、纯读/修复分离及并发/崩溃探针。
 - 2026-07-08: 原生 widget 以 Cowart 模式回归（v0.5.0）——新增 render_naming_workbench_widget 渲染工具与 ui://widget/naming/workbench.html 资源，api-client 双模路由（widget 桥 / localhost fetch），生成点击经 sendFollowUpMessage 唤醒 Codex，根治「watcher 死后请求滞留」的结构性缺陷；localhost 全链路保留为兜底，探针覆盖 widget 单文件产物 CSP 断言。
 - 2026-07-08: Product Design 审阅后压实工作台——候选中栏改为扫描表，选中态从整块描边改为左侧状态条，右栏解析头部收敛，三栏共享面板阴影退场。
 - 2026-07-08: 优化工作台响应式布局——三栏断点提前到 1120px，中间 gutter 归零，候选行与对比卡片压实，宽屏不再误掉单列。

@@ -1,7 +1,7 @@
 /**
- * - [INPUT]: 依赖 react 状态钩子、api-client 双模状态协议（含 widget 桥检测与 follow-up 唤醒）、name-engine 默认/合并/归一化 profile 能力、styles.css 全高工作台壳子、workbench/common 的 providerLabel 与面板组件。
+ * - [INPUT]: 依赖 react、api-client 部分成功提交/纯读状态协议、name-engine profile 归一化与 workbench 面板组件。
  * - [OUTPUT]: 对外提供 NameWorkbench 顶栏 + 三栏全高起名产品组件。
- * - [POS]: components 的产品状态机，协调顶栏状态、左栏输入、中栏候选、右栏解析、latestResult 复水、pending 元信息、超时降级与响应式工作台布局。
+ * - [POS]: components 的产品状态机，以 latestActiveRequest 区分 pending 120s 与 processing 600s 窗口，triggerLagging 仍保持轮询。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import * as React from "react";
@@ -39,10 +39,10 @@ const idleStatus = {
   provider: "idle",
   model: "Codex",
 };
-// 两级等待窗口：无接管信号时 2 分钟提示恢复路径；follow-up 已被用户确认发送
-// （Codex 必然接管，测算含研究步骤需数分钟）时放宽到 10 分钟。
+// 两级等待窗口由持久状态决定：pending 尚未 claim 为 2 分钟；processing
+// 已有 claimOwner，允许研究与测算持续 10 分钟。
 const REQUEST_WAIT_TIMEOUT_MS = 120000;
-const NOTIFIED_WAIT_TIMEOUT_MS = 600000;
+const PROCESSING_WAIT_TIMEOUT_MS = 600000;
 
 // 滞留恢复通道是对话消息：widget 模式文案保持等待语气（Codex 可能仍在测算）；
 // 兜底（localhost）模式下 watcher 可能已死，必须让用户手动去对话里说话。
@@ -57,9 +57,12 @@ function mergeResultProfile(current, requestProfile, resultProfile) {
   return normalizeProfile(mergeProfile(mergeProfile(current, requestProfile || {}), resultProfile || {}));
 }
 
-function pendingExpired(request) {
+function activeExpired(request) {
   const time = Date.parse(request?.updatedAt || request?.createdAt || "");
-  return Number.isFinite(time) && Date.now() - time >= REQUEST_WAIT_TIMEOUT_MS;
+  const timeout = request?.status === "processing"
+    ? PROCESSING_WAIT_TIMEOUT_MS
+    : REQUEST_WAIT_TIMEOUT_MS;
+  return Number.isFinite(time) && Date.now() - time >= timeout;
 }
 
 export function NameWorkbench() {
@@ -73,8 +76,6 @@ export function NameWorkbench() {
   const [pendingMeta, setPendingMeta] = React.useState(null);
   const [status, setStatus] = React.useState(idleStatus);
   const [error, setError] = React.useState("");
-  // follow-up 已被用户确认发送的带外信号：只影响等待窗口宽度，不参与渲染。
-  const followUpSentRef = React.useRef(false);
 
   const applyNames = React.useCallback((nextNames, nextStatus) => {
     setNames(nextNames);
@@ -90,23 +91,23 @@ export function NameWorkbench() {
       try {
         const state = await loadNameState();
         if (cancelled) return;
-        if (state.latestPendingRequest) {
-          const pending = state.latestPendingRequest;
-          setProfile((current) => mergeResultProfile(current, pending.profile, null));
-          setBatch(pending.batch || 0);
+        if (state.latestActiveRequest) {
+          const active = state.latestActiveRequest;
+          setProfile((current) => mergeResultProfile(current, active.profile, null));
+          setBatch(active.batch || 0);
           setNames([]);
           setSelectedId("");
-          setPendingRequestId(pending.id);
+          setPendingRequestId(active.id);
           setPendingMeta({
-            requestId: pending.id,
-            batch: pending.batch || 0,
+            requestId: active.id,
+            batch: active.batch || 0,
           });
-          setIsGenerating(!pendingExpired(pending));
+          setIsGenerating(!activeExpired(active));
           setStatus({
             provider: "pending-codex",
             model: "Codex",
           });
-          setError(pendingExpired(pending) ? stalledMessage(pending.id) : "");
+          setError(activeExpired(active) ? stalledMessage(active.id) : "");
           return;
         }
         if (!state.latestResult?.candidates?.length) return;
@@ -133,7 +134,7 @@ export function NameWorkbench() {
     let cancelled = false;
     let inFlight = false;
     let timedOut = false;
-    const startedAt = Date.now();
+    let observedStatus = "";
 
     async function pollResult() {
       if (inFlight) return;
@@ -143,8 +144,19 @@ export function NameWorkbench() {
         if (cancelled) return;
         const request = state.requests?.[pendingRequestId];
         if (!request) return;
-        const waitTimeoutMs = followUpSentRef.current ? NOTIFIED_WAIT_TIMEOUT_MS : REQUEST_WAIT_TIMEOUT_MS;
-        if (request.status === "pending" && !timedOut && Date.now() - startedAt >= waitTimeoutMs) {
+        if (request.status !== observedStatus) {
+          observedStatus = request.status;
+          timedOut = false;
+          if (request.status === "pending" || request.status === "processing") {
+            setIsGenerating(true);
+            setError("");
+          }
+        }
+        const waitTimeoutMs = request.status === "processing"
+          ? PROCESSING_WAIT_TIMEOUT_MS
+          : REQUEST_WAIT_TIMEOUT_MS;
+        const requestTime = Date.parse(request.updatedAt || request.createdAt || "");
+        if ((request.status === "pending" || request.status === "processing") && !timedOut && Number.isFinite(requestTime) && Date.now() - requestTime >= waitTimeoutMs) {
           timedOut = true;
           setIsGenerating(false);
           setError(stalledMessage(pendingRequestId));
@@ -232,13 +244,14 @@ export function NameWorkbench() {
         provider: pending.provider,
         model: pending.model,
       });
+      if (pending.triggerLagging) {
+        setError("请求已保存，通知投递中；工作台会继续等待结果。");
+      }
       // widget 模式：请求已落盘，follow-up 消息负责唤醒 Codex。发送成功意味着 Codex 必然接管，
       // 等待窗口放宽；发送失败不清 pending，立即给恢复指引。
-      followUpSentRef.current = false;
       if (hasNamingWidgetBridge()) {
         try {
           await sendGenerateFollowUp(pending.requestId);
-          followUpSentRef.current = true;
         } catch (_caught) {
           setError(stalledMessage(pending.requestId));
         }

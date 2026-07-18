@@ -1,7 +1,7 @@
 {
   "name": "codex-naming-studio",
-  "version": "0.5.0",
-  "description": "A Codex naming workbench rendered as a native Codex widget: GUI clicks wake Codex through follow-up messages, structured name analysis flows back through MCP state tools, no API key required.",
+  "version": "0.6.0",
+  "description": "A Codex naming workbench with event-driven hosted requests, claim-fenced result writeback, and native widget support; no API key required.",
   "author": {
     "name": "thinkingjimmy",
     "email": "noreply@example.com",
@@ -16,10 +16,10 @@
   "interface": {
     "displayName": "Codex Naming Studio",
     "shortDescription": "Collect naming constraints and let Codex return structured name analysis.",
-    "longDescription": "Codex Naming Studio renders a naming workbench as a native Codex widget. Users fill baby naming constraints and click generate; the widget saves the request and wakes Codex with a follow-up message, Codex runs bazi and research steps per the derived plan, and writes ranked Chinese name candidates with scoring, five-elements analysis, source notes, and full-dimension name breakdowns back to the GUI. A localhost browser workbench remains as a development fallback. No API key required.",
+    "longDescription": "Codex Naming Studio supports hosted event-driven requests and a native Codex widget. Requests are atomically committed with a dedicated trigger, claimed with a fenced claimId, processed through bazi and research steps, and written back as ranked Chinese name candidates. A localhost browser workbench remains as a development fallback. No API key required.",
     "developerName": "thinkingjimmy",
     "category": "Productivity",
-    "capabilities": ["Native Codex widget workbench", "Follow-up message wake-up", "Codex-driven naming analysis", "Structured GUI results", "Zero API key"],
+    "capabilities": ["Event-driven hosted workbench", "Claim-fenced result writeback", "Native Codex widget", "Codex-driven naming analysis", "Zero API key"],
     "websiteURL": "https://openai.com",
     "brandColor": "#5D7D46",
     "defaultPrompt": [

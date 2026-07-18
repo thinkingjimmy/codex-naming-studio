@@ -1,6 +1,6 @@
 {
   "name": "codex-naming-studio",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": false,
   "type": "module",
   "scripts": {
@@ -8,10 +8,12 @@
     "dev:vite": "vite --host 127.0.0.1",
     "mcp": "node scripts/start-mcp.mjs",
     "probe:mcp": "node scripts/probe-mcp.mjs",
+    "probe:concurrency": "node scripts/probe-concurrency.mjs",
+    "probe:crash": "node scripts/probe-crash.mjs",
     "build": "vite build",
     "build:widget": "node scripts/vite-build-once.mjs --widget",
     "preview": "vite preview --host 127.0.0.1",
-    "quality": "node --check mcp/server.mjs && node --check mcp/lib/naming-state.mjs && node --check mcp/lib/widget-resource.mjs && node --check mcp/lib/naming-static-widget.mjs && node --check scripts/start-mcp.mjs && node --check scripts/start-workbench.mjs && node --check scripts/watch-naming-request.mjs && node --check scripts/vite-build-once.mjs && node --check scripts/probe-mcp.mjs && vite build && node scripts/probe-mcp.mjs"
+    "quality": "node --check mcp/server.mjs && node --check mcp/lib/naming-state.mjs && node --check mcp/lib/widget-resource.mjs && node --check mcp/lib/naming-static-widget.mjs && node --check scripts/start-mcp.mjs && node --check scripts/start-workbench.mjs && node --check scripts/watch-naming-request.mjs && node --check scripts/vite-build-once.mjs && node --check scripts/probe-mcp.mjs && node --check scripts/probe-concurrency.mjs && node --check scripts/probe-crash.mjs && vite build && node scripts/probe-mcp.mjs && node scripts/probe-concurrency.mjs && node scripts/probe-crash.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "^1.7.4",

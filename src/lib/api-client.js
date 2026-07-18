@@ -1,7 +1,7 @@
 /**
  * - [INPUT]: 依赖 window.namingMcp 宿主桥（widget 模式，经 openai:set_globals 取 toolOutput.projectDir）或浏览器 fetch + 同源 Vite 状态 middleware（兜底模式）。
- * - [OUTPUT]: 对外提供 submitNameRequest(profile, batch)、loadNameState()、sendGenerateFollowUp(requestId) 与 hasNamingWidgetBridge()。
- * - [POS]: lib 的双模状态协议层，widget 模式走 MCP 服务端工具并用 follow-up 消息唤醒 Codex，兜底模式落状态文件等 watcher。
+ * - [OUTPUT]: 提供结构化部分成功 submitNameRequest、纯读 loadNameState、widget follow-up 与桥检测。
+ * - [POS]: lib 的双模状态协议层；committed=true 即确认请求存在，triggerLagging 只表示通知后台补投中。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
@@ -93,12 +93,13 @@ async function requestJson(url, options) {
 
 export async function submitNameRequest(profile, batch) {
   const requestId = createRequestId();
+  let result;
   if (hasNamingWidgetBridge()) {
-    await callNamingServerTool(TOOL_SAVE_REQUEST, {
+    result = await callNamingServerTool(TOOL_SAVE_REQUEST, {
       request: { id: requestId, profile, batch, source: "widget" },
     });
   } else {
-    await requestJson("/api/naming-request", {
+    result = await requestJson("/api/naming-request", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -106,8 +107,13 @@ export async function submitNameRequest(profile, batch) {
       }),
     });
   }
+  if (result?.committed !== true) {
+    throw new Error("起名请求未确认保存，请重试。");
+  }
   return {
     requestId,
+    committed: true,
+    triggerLagging: Boolean(result.triggerLagging),
     provider: "pending-codex",
     model: "Codex",
   };
