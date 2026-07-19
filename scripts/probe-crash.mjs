@@ -1,15 +1,18 @@
 /**
- * - [INPUT]: 依赖 child_process、真实临时目录与 naming-state 的三种环境故障注入点。
- * - [OUTPUT]: 验证目录/旧文件锁崩溃可由代际 fence 接管、state/trigger 中断可修复、trigger 部分成功会在零读取下后台补投。
+ * - [INPUT]: 依赖 child_process、真实临时目录与 naming-state 的构造/发布/释放/双提交环境故障注入点。
+ * - [OUTPUT]: 验证 owner 构造失败清理、历史 owner/release 安全回收、目录/旧文件死锁接管与 state/trigger 自愈。
  * - [POS]: scripts 的崩溃一致性质量门禁；同文件兼任短生命周期故障子进程。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -51,6 +54,84 @@ if (mode === "--worker") {
 async function runProbe() {
   const root = await mkdtemp(path.join(tmpdir(), "naming-crash-"));
   try {
+    const failedWrite = path.join(root, "failed-owner-write");
+    await mkdir(failedWrite);
+    const ownerWriteFailure = await runChild(failedWrite, "failed-owner-write", {
+      NAMING_FAIL_OWNER_WRITE: "1",
+    });
+    if (ownerWriteFailure.code === 0) {
+      throw new Error("Owner write failure injection did not fail.");
+    }
+    await assertNoTransientLockResidues(failedWrite);
+
+    const emptyOwner = path.join(root, "empty-owner");
+    await mkdir(emptyOwner);
+    const crashedEmptyOwner = await runChild(emptyOwner, "empty-owner", {
+      NAMING_CRASH_AFTER_OWNER_MKDIR: "1",
+    });
+    if (crashedEmptyOwner.code === 0) {
+      throw new Error("Owner mkdir crash injection did not exit.");
+    }
+    await saveNamingRequest(
+      { projectDir: emptyOwner },
+      { id: "empty-owner-takeover", profile: { surname: "林", fullNameLength: 3 } }
+    );
+    await assertNoTransientLockResidues(emptyOwner);
+
+    const activeOwner = path.join(root, "active-owner");
+    const activeStateDir = path.join(activeOwner, ".naming-product");
+    await mkdir(activeStateDir, { recursive: true });
+    const activeResidue = path.join(
+      activeStateDir,
+      `state.owner-${process.pid}-${crypto.randomUUID()}.tmp`
+    );
+    await mkdir(activeResidue);
+    await saveNamingRequest(
+      { projectDir: activeOwner },
+      { id: "active-owner-preserved", profile: { surname: "林", fullNameLength: 3 } }
+    );
+    if (await singleTransientResidue(activeOwner, "state.owner-") !== activeResidue) {
+      throw new Error("Live incomplete owner residue was not preserved fail-closed.");
+    }
+    await rm(activeResidue, { recursive: true, force: true });
+
+    const legacyOwner = path.join(root, "legacy-owner-residue");
+    const legacyResidueStateDir = path.join(legacyOwner, ".naming-product");
+    await mkdir(legacyResidueStateDir, { recursive: true });
+    const legacyResidue = path.join(
+      legacyResidueStateDir,
+      `state.owner-${crypto.randomUUID()}.tmp`
+    );
+    await mkdir(legacyResidue);
+    await saveNamingRequest(
+      { projectDir: legacyOwner },
+      { id: "young-legacy-preserved", profile: { surname: "林", fullNameLength: 3 } }
+    );
+    if (await singleTransientResidue(legacyOwner, "state.owner-") !== legacyResidue) {
+      throw new Error("Young legacy owner residue was not preserved fail-closed.");
+    }
+    const old = new Date(0);
+    await utimes(legacyResidue, old, old);
+    await saveNamingRequest(
+      { projectDir: legacyOwner },
+      { id: "legacy-owner-takeover", profile: { surname: "林", fullNameLength: 3 } }
+    );
+    await assertNoTransientLockResidues(legacyOwner);
+
+    const completeOwner = path.join(root, "complete-owner");
+    await mkdir(completeOwner);
+    const crashedCompleteOwner = await runChild(completeOwner, "complete-owner", {
+      NAMING_CRASH_AFTER_OWNER_WRITE: "1",
+    });
+    if (crashedCompleteOwner.code === 0) {
+      throw new Error("Owner write crash injection did not exit.");
+    }
+    await saveNamingRequest(
+      { projectDir: completeOwner },
+      { id: "complete-owner-takeover", profile: { surname: "林", fullNameLength: 3 } }
+    );
+    await assertNoTransientLockResidues(completeOwner);
+
     const acquire = path.join(root, "acquire");
     await mkdir(acquire);
     const crashedAcquire = await runChild(acquire, "crash-acquire", {
@@ -92,6 +173,21 @@ async function runProbe() {
       throw new Error("Legacy file lock was not migrated through a generation fence.");
     }
 
+    const released = path.join(root, "released");
+    await mkdir(released);
+    const crashedRelease = await runChild(released, "release-crash", {
+      NAMING_CRASH_AFTER_RELEASE_RENAME: "1",
+    });
+    if (crashedRelease.code === 0) {
+      throw new Error("Release rename crash injection did not exit.");
+    }
+    await singleTransientResidue(released, "state.release-");
+    await saveNamingRequest(
+      { projectDir: released },
+      { id: "release-takeover", profile: { surname: "林", fullNameLength: 3 } }
+    );
+    await assertNoTransientLockResidues(released);
+
     const between = path.join(root, "between");
     await mkdir(between);
     const crashedBetween = await runChild(between, "between-commits", {
@@ -120,9 +216,38 @@ async function runProbe() {
     // 子进程没有做任何读取；它能退出说明 referenced 后台重试已经补投并收敛。
     await assertTriggerMatchesState(lagging);
 
-    console.log("OK: crash recovery and zero-read background trigger repair are sound.");
+    console.log("OK: lock residue recovery, crash recovery, and trigger repair are sound.");
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+}
+
+async function singleTransientResidue(project, prefix) {
+  const stateDir = path.join(project, ".naming-product");
+  const entries = await readdir(stateDir);
+  const matches = entries.filter((entry) => entry.startsWith(prefix));
+  if (matches.length !== 1) {
+    throw new Error(`Expected one ${prefix} residue, found: ${entries.join(", ")}`);
+  }
+  return path.join(stateDir, matches[0]);
+}
+
+async function assertNoTransientLockResidues(project) {
+  const stateDir = path.join(project, ".naming-product");
+  let entries;
+  try {
+    entries = await readdir(stateDir);
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  const residues = entries.filter((entry) =>
+    ["state.owner-", "state.release-", "state.garbage-"].some((prefix) =>
+      entry.startsWith(prefix)
+    )
+  );
+  if (residues.length) {
+    throw new Error(`Transient lock residues were not reclaimed: ${residues.join(", ")}`);
   }
 }
 

@@ -1,13 +1,15 @@
 /**
  * - [INPUT]: 依赖 node:fs/promises、node:path/crypto，读取用户项目状态并依赖 name-engine/task-plan 归一化业务数据。
- * - [OUTPUT]: 提供纯读 readStateUnlocked/publicState、非空目录原子发布/私有化释放与永久代际 fence 锁、显式 trigger 修复、请求保存/认领/claimId 栅栏结果提交。
- * - [POS]: mcp/lib 的并发状态单一真相源；永久 fence 阻断陈旧 reaper 触碰新锁，mutation 串行且读操作绝不写文件或触发 Agent。
+ * - [OUTPUT]: 提供纯读 readStateUnlocked/publicState、可回收构造残留的目录代际锁、显式 trigger 修复、请求保存/认领/claimId 栅栏结果提交。
+ * - [POS]: mcp/lib 的并发状态单一真相源；永久 fence 阻断陈旧 reaper，临时目录按 PID/年龄安全回收，mutation 串行且纯读绝不写文件。
  * - [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import crypto from "node:crypto";
 import {
+  lstat,
   mkdir,
   readFile,
+  readdir,
   rename,
   rm,
   writeFile,
@@ -23,6 +25,7 @@ import { buildTaskPlan } from "../../src/lib/task-plan.js";
 
 const LOCK_RETRY_MS = 25;
 const LOCK_TIMEOUT_MS = 5_000;
+const LEGACY_OWNER_RESIDUE_STALE_MS = 60 * 60 * 1_000;
 const TRIGGER_RETRY_MIN_MS = 50;
 const TRIGGER_RETRY_MAX_MS = 5_000;
 const OWNER_NONCE_PATTERN =
@@ -292,6 +295,7 @@ export async function withStateLock(
 ) {
   const paths = resolveNamingPaths(args);
   await mkdir(paths.stateDir, { recursive: true });
+  await cleanupLockResidues(paths);
   const owner = await acquireStateLock(paths);
   try {
     if (repairFirst) await repairTriggerUnlocked(args, paths, owner);
@@ -311,21 +315,34 @@ async function acquireStateLock(paths) {
     };
     const ownerDir = path.join(
       paths.stateDir,
-      `state.owner-${owner.nonce}.tmp`
+      `state.owner-${owner.pid}-${owner.nonce}.tmp`
     );
-    await mkdir(ownerDir, { mode: 0o700 });
-    await writeFile(
-      path.join(ownerDir, "owner.json"),
-      `${JSON.stringify(owner)}\n`,
-      { flag: "wx", mode: 0o600 }
-    );
+    let published = false;
     try {
+      await mkdir(ownerDir, { mode: 0o700 });
+      if (process.env.NAMING_CRASH_AFTER_OWNER_MKDIR === "1") process.exit(90);
+      if (process.env.NAMING_FAIL_OWNER_WRITE === "1") {
+        throw new NamingStateError(
+          "OWNER_WRITE_INJECTED",
+          "Injected owner write failure."
+        );
+      }
+      await writeFile(
+        path.join(ownerDir, "owner.json"),
+        `${JSON.stringify(owner)}\n`,
+        { flag: "wx", mode: 0o600 }
+      );
+      if (process.env.NAMING_CRASH_AFTER_OWNER_WRITE === "1") process.exit(91);
       await rename(ownerDir, paths.lockDir);
+      published = true;
       if (process.env.NAMING_CRASH_AFTER_ACQUIRE === "1") process.exit(93);
       return owner;
     } catch (error) {
-      await rm(ownerDir, { recursive: true, force: true });
       if (!isOccupiedLockTarget(error)) throw error;
+    } finally {
+      if (!published) {
+        await rm(ownerDir, { recursive: true, force: true });
+      }
     }
     await reapDeadLock(paths);
     await delay(LOCK_RETRY_MS);
@@ -413,10 +430,104 @@ async function releaseStateLock(paths, owner) {
       `state.release-${owner.nonce}`
     );
     await rename(paths.lockDir, releaseDir);
+    if (process.env.NAMING_CRASH_AFTER_RELEASE_RENAME === "1") process.exit(94);
     await rm(releaseDir, { recursive: true, force: true });
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
+}
+
+// ============================================================================
+// 构造残留不是锁：新目录名携 PID，空/损坏 owner 也能机械判断生死；旧版
+// 无 PID 名称只能老化后回收，避免误删 mkdir→write 窗口中的活跃竞争者。
+// release/garbage 已私有化，可立即移入唯一 garbage 后删除并持续收敛。
+// ============================================================================
+async function cleanupLockResidues(paths) {
+  let entries;
+  try {
+    entries = await readdir(paths.stateDir, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  for (const entry of entries) {
+    const ownerResidue = parseOwnerResidueName(entry.name);
+    const releaseNonce = residueNonce(entry.name, "state.release-", "");
+    const garbageNonce = residueNonce(entry.name, "state.garbage-", "");
+    if (!ownerResidue && !releaseNonce && !garbageNonce) continue;
+    const residue = path.join(paths.stateDir, entry.name);
+    if (
+      ownerResidue &&
+      !(await isReclaimableOwnerResidue(residue, ownerResidue.pid))
+    ) {
+      continue;
+    }
+    await quarantineAndRemoveResidue(paths, residue);
+  }
+}
+
+async function isReclaimableOwnerResidue(residue, namePid) {
+  let info;
+  try {
+    info = await lstat(residue);
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
+  if (!info.isDirectory() || info.isSymbolicLink()) return true;
+  try {
+    const owner = await readOwner(residue);
+    return !isProcessAlive(owner.pid);
+  } catch (error) {
+    if (error.code === "ENOENT" || error instanceof SyntaxError) {
+      return namePid
+        ? !isProcessAlive(namePid)
+        : Date.now() - info.mtimeMs >= LEGACY_OWNER_RESIDUE_STALE_MS;
+    }
+    if (error instanceof NamingStateError && error.code === "INVALID_LOCK_OWNER") {
+      return namePid
+        ? !isProcessAlive(namePid)
+        : Date.now() - info.mtimeMs >= LEGACY_OWNER_RESIDUE_STALE_MS;
+    }
+    throw error;
+  }
+}
+
+function parseOwnerResidueName(name) {
+  const prefix = "state.owner-";
+  const suffix = ".tmp";
+  if (!name.startsWith(prefix) || !name.endsWith(suffix)) return null;
+  const identity = name.slice(prefix.length, -suffix.length);
+  if (OWNER_NONCE_PATTERN.test(identity)) return { pid: null, nonce: identity };
+  const separator = identity.indexOf("-");
+  const pid = Number(identity.slice(0, separator));
+  const nonce = identity.slice(separator + 1);
+  if (
+    separator <= 0 ||
+    !Number.isSafeInteger(pid) ||
+    pid <= 0 ||
+    !OWNER_NONCE_PATTERN.test(nonce)
+  ) {
+    return null;
+  }
+  return { pid, nonce };
+}
+
+async function quarantineAndRemoveResidue(paths, residue) {
+  const garbage = path.join(paths.stateDir, `state.garbage-${crypto.randomUUID()}`);
+  try {
+    await rename(residue, garbage);
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  await rm(garbage, { recursive: true, force: true });
+}
+
+function residueNonce(name, prefix, suffix) {
+  if (!name.startsWith(prefix) || !name.endsWith(suffix)) return null;
+  const nonce = name.slice(prefix.length, suffix ? -suffix.length : undefined);
+  return OWNER_NONCE_PATTERN.test(nonce) ? nonce : null;
 }
 
 async function writeStateUnlocked(state, paths, owner) {
